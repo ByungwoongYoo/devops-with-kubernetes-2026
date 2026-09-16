@@ -67,6 +67,7 @@ jobs:
           repository: ${{ env.CONFIG_REPO }}
           token: ${{ secrets.CONFIG_REPO_TOKEN }}
           ref: main
+          fetch-depth: 0
           path: config-repo
 
       - name: Set up Kustomize
@@ -103,7 +104,9 @@ jobs:
             echo "No config-repo change"
           else
             git commit -m "Release $RELEASE_KIND from app $GITHUB_SHA"
-            git push origin main
+            git fetch origin main
+            git rebase origin/main
+            git push origin HEAD:main
           fi
 
       - name: GitOps boundary
