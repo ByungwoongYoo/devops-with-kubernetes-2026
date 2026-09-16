@@ -40,21 +40,25 @@ jobs:
           kubectl get pods -n knative-serving
           kubectl get pods -n kourier-system
 
+      - name: Start in-cluster curl client
+        run: |
+          kubectl run curltest --image=curlimages/curl:8.10.1 --restart=Never --command -- sleep 3600
+          kubectl wait --for=condition=Ready pod/curltest --timeout=120s
+
       - name: Deploy first Knative Service
         run: |
           kubectl apply -f serverless/hello.yaml
           kubectl wait --for=condition=Ready ksvc/hello --timeout=240s
           kubectl get ksvc hello
           URL=$(kubectl get ksvc hello -o jsonpath='{.status.url}')
-          HOST=${URL#http://}
           echo "Knative URL: $URL"
-          curl --fail --retry 20 --retry-delay 2 -H "Host: $HOST" http://127.0.0.1:8081 | tee /tmp/hello-v1.txt
+          kubectl exec curltest -- curl --fail --retry 20 --retry-delay 2 "$URL" | tee /tmp/hello-v1.txt
           grep -q 'Knative v1' /tmp/hello-v1.txt
 
       - name: Verify autoscaling to zero and back up
         run: |
           echo 'Waiting for hello pod to scale to zero'
-          for i in $(seq 1 40); do
+          for i in $(seq 1 50); do
             COUNT=$(kubectl get pods -l serving.knative.dev/service=hello --no-headers 2>/dev/null | wc -l)
             echo "pod count=$COUNT"
             if [ "$COUNT" -eq 0 ]; then break; fi
@@ -63,8 +67,8 @@ jobs:
           COUNT=$(kubectl get pods -l serving.knative.dev/service=hello --no-headers 2>/dev/null | wc -l)
           test "$COUNT" -eq 0
           URL=$(kubectl get ksvc hello -o jsonpath='{.status.url}')
-          HOST=${URL#http://}
-          curl --fail --retry 20 --retry-delay 2 -H "Host: $HOST" http://127.0.0.1:8081 >/tmp/wakeup.txt
+          kubectl exec curltest -- curl --fail --retry 20 --retry-delay 2 "$URL" >/tmp/wakeup.txt
+          grep -q 'Knative v1' /tmp/wakeup.txt
           for i in $(seq 1 24); do
             COUNT=$(kubectl get pods -l serving.knative.dev/service=hello --no-headers 2>/dev/null | wc -l)
             if [ "$COUNT" -ge 1 ]; then break; fi
@@ -80,10 +84,9 @@ jobs:
           kubectl wait --for=condition=Ready ksvc/hello --timeout=240s
           kubectl get ksvc hello -o yaml | sed -n '/traffic:/,$p' | head -40
           URL=$(kubectl get ksvc hello -o jsonpath='{.status.url}')
-          HOST=${URL#http://}
           : > /tmp/split.txt
           for i in $(seq 1 50); do
-            curl --fail --retry 10 --retry-delay 1 -H "Host: $HOST" http://127.0.0.1:8081 >>/tmp/split.txt
+            kubectl exec curltest -- curl --fail --retry 10 --retry-delay 1 "$URL" >>/tmp/split.txt
           done
           V1=$(grep -c 'Knative v1' /tmp/split.txt || true)
           V2=$(grep -c 'Knative v2' /tmp/split.txt || true)
