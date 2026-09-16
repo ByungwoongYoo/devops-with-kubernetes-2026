@@ -24,6 +24,8 @@ const pool = new Pool({
   password: required('DATABASE_PASSWORD'),
 });
 
+let isHealthy = true;
+
 function logTodo(event, details = {}) {
   console.log(JSON.stringify({
     timestamp: new Date().toISOString(),
@@ -86,6 +88,32 @@ async function initializeDatabase() {
 
 const server = http.createServer(async (req, res) => {
   try {
+    if (req.method === 'GET' && req.url === '/healthz') {
+      if (!isHealthy) {
+        sendJson(res, 500, { status: 'unhealthy' });
+        return;
+      }
+      sendJson(res, 200, { status: 'ok' });
+      return;
+    }
+
+    if (req.method === 'GET' && req.url === '/readyz') {
+      if (!isHealthy) {
+        sendJson(res, 500, { status: 'unhealthy' });
+        return;
+      }
+      await pool.query('SELECT 1');
+      sendJson(res, 200, { status: 'ready' });
+      return;
+    }
+
+    if (req.method === 'POST' && req.url === '/break') {
+      isHealthy = false;
+      logTodo('application_broken_for_probe_test');
+      sendJson(res, 200, { status: 'breaking' });
+      return;
+    }
+
     if (req.method === 'GET' && req.url === '/todos') {
       const result = await pool.query('SELECT id, content FROM todos ORDER BY id');
       sendJson(res, 200, result.rows);
