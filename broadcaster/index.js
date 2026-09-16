@@ -13,7 +13,8 @@ function delay(ms) {
 const natsUrl = required('NATS_URL');
 const natsSubject = required('NATS_SUBJECT');
 const natsQueue = required('NATS_QUEUE');
-const broadcastUrl = required('BROADCAST_URL');
+const broadcastMode = process.env.BROADCAST_MODE || 'forward';
+const broadcastUrl = broadcastMode === 'forward' ? required('BROADCAST_URL') : (process.env.BROADCAST_URL || '');
 const broadcastUser = required('BROADCAST_USER');
 const codec = JSONCodec();
 
@@ -33,11 +34,20 @@ async function connectWithRetry() {
   throw lastError;
 }
 
-async function forwardEvent(event) {
+async function deliverEvent(event) {
   const payload = {
     user: broadcastUser,
     message: event.message || 'A todo changed',
   };
+
+  if (broadcastMode === 'log') {
+    console.log(JSON.stringify({ event: 'broadcast_logged', payload }));
+    return;
+  }
+
+  if (broadcastMode !== 'forward') {
+    throw new Error(`Unsupported BROADCAST_MODE: ${broadcastMode}`);
+  }
 
   const response = await fetch(broadcastUrl, {
     method: 'POST',
@@ -55,7 +65,7 @@ async function main() {
   const subscription = nc.subscribe(natsSubject, { queue: natsQueue });
 
   console.log(
-    `Broadcaster listening on subject ${natsSubject} in queue group ${natsQueue}`
+    `Broadcaster listening on subject ${natsSubject} in queue group ${natsQueue}; mode=${broadcastMode}`
   );
 
   for await (const message of subscription) {
@@ -68,18 +78,17 @@ async function main() {
     }
 
     try {
-      await forwardEvent(event);
+      await deliverEvent(event);
       console.log(
         JSON.stringify({
-          event: 'broadcast_sent',
+          event: broadcastMode === 'log' ? 'broadcast_logged_ok' : 'broadcast_sent',
           todoEventType: event.type,
           todoId: event.todo?.id,
         })
       );
     } catch (error) {
-      // Deliberately do not retry here. Core NATS queue subscriptions deliver
-      // each event to one broadcaster replica; the course allows an occasional
-      // missing message but explicitly forbids duplicates.
+      // Do not retry: with core NATS queue subscriptions a retry at this layer
+      // could create duplicate external messages, which the exercise forbids.
       console.error(
         JSON.stringify({
           event: 'broadcast_failed',
