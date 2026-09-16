@@ -1,0 +1,6 @@
+spec:
+  traffic:
+    - revisionName: hello-v1
+      percent: 50
+    - revisionName: hello-v2
+      percent: 50
