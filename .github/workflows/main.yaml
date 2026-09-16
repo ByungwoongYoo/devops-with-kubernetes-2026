@@ -1,4 +1,4 @@
-name: GitOps release project environments
+name: Build images and update GitOps config repo
 
 on:
   push:
@@ -8,20 +8,21 @@ on:
       - "*"
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
 
 env:
   PROJECT_ID: ${{ secrets.GKE_PROJECT }}
   REGISTRY: asia-northeast3-docker.pkg.dev
   REPOSITORY: dwk
+  CONFIG_REPO: ByungwoongYoo/devops-with-kubernetes-2026-config
 
 jobs:
   build-publish-release:
     runs-on: ubuntu-latest
     environment: GKE_PROJECT
     steps:
-      - name: Checkout triggering revision
+      - name: Checkout application source
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -38,29 +39,40 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud --quiet auth configure-docker "$REGISTRY"
 
-      - name: Build and publish project images
+      - name: Build and publish application images
         run: |
           TODO_APP_IMAGE="$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-app:$GITHUB_SHA"
           TODO_BACKEND_IMAGE="$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-backend:$GITHUB_SHA"
           TODO_GENERATOR_IMAGE="$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-generator:$GITHUB_SHA"
           TODO_BROADCASTER_IMAGE="$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-broadcaster:$GITHUB_SHA"
+
           docker build -t "$TODO_APP_IMAGE" ./todo-app
           docker build -t "$TODO_BACKEND_IMAGE" ./todo-backend
           docker build -t "$TODO_GENERATOR_IMAGE" ./todo-generator
           docker build -t "$TODO_BROADCASTER_IMAGE" ./broadcaster
+
           docker push "$TODO_APP_IMAGE"
           docker push "$TODO_BACKEND_IMAGE"
           docker push "$TODO_GENERATOR_IMAGE"
           docker push "$TODO_BROADCASTER_IMAGE"
+
           echo "TODO_APP_IMAGE=$TODO_APP_IMAGE" >> "$GITHUB_ENV"
           echo "TODO_BACKEND_IMAGE=$TODO_BACKEND_IMAGE" >> "$GITHUB_ENV"
           echo "TODO_GENERATOR_IMAGE=$TODO_GENERATOR_IMAGE" >> "$GITHUB_ENV"
           echo "TODO_BROADCASTER_IMAGE=$TODO_BROADCASTER_IMAGE" >> "$GITHUB_ENV"
 
+      - name: Checkout separate configuration repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ env.CONFIG_REPO }}
+          token: ${{ secrets.CONFIG_REPO_TOKEN }}
+          ref: main
+          path: config-repo
+
       - name: Set up Kustomize
         uses: imranismail/setup-kustomize@v3
 
-      - name: Select staging or production desired state
+      - name: Select environment from Git ref
         shell: bash
         run: |
           if [[ "$GITHUB_REF" == refs/heads/main ]]; then
@@ -74,16 +86,9 @@ jobs:
             exit 1
           fi
 
-      - name: Update desired state on main
+      - name: Update image state in configuration repository
         run: |
-          # A tagged build is produced from the tagged commit, but the desired
-          # production state is committed to main where ArgoCD watches it.
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            git fetch origin main
-            git checkout -B main origin/main
-          fi
-
-          cd "$OVERLAY"
+          cd "config-repo/$OVERLAY"
           kustomize edit set image PROJECT/TODO_APP="$TODO_APP_IMAGE"
           kustomize edit set image PROJECT/TODO_BACKEND="$TODO_BACKEND_IMAGE"
           kustomize edit set image PROJECT/TODO_GENERATOR="$TODO_GENERATOR_IMAGE"
@@ -93,15 +98,17 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "$OVERLAY/kustomization.yaml"
+
           if git diff --cached --quiet; then
-            echo "No desired-state change"
+            echo "No config-repo change"
           else
-            git commit -m "Release $RELEASE_KIND $GITHUB_SHA [skip ci]"
-            git push origin HEAD:main
+            git commit -m "Release $RELEASE_KIND from app $GITHUB_SHA"
+            git push origin main
           fi
 
       - name: GitOps boundary
         run: |
-          echo "main commit -> staging overlay"
-          echo "tagged commit -> production overlay"
-          echo "CI never runs kubectl apply; ArgoCD pulls both environments."
+          echo "Source code lives in $GITHUB_REPOSITORY."
+          echo "Kubernetes desired state lives in $CONFIG_REPO."
+          echo "CI writes only image references to the config repository."
+          echo "ArgoCD watches the config repository and owns cluster reconciliation."
