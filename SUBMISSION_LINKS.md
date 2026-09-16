@@ -30,5 +30,6 @@ The course examples use `tree/<exercise>` links. Matching branch snapshots were 
 - Exercise 3.3: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.3
 - Exercise 3.4: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.4
 - Exercise 3.5: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.5
+- Exercise 3.6: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.6
 
 Exercises 1.1–1.9 were runtime-checked locally. Later exercises were prepared from the course requirements and are not claimed as runtime-verified unless explicitly noted. GKE exercises are only marked runtime-verified after the corresponding cloud deployment has actually been completed.
