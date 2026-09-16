@@ -11,6 +11,7 @@ resources:
   - todo-backend/manifests/deployment.yaml
   - todo-backend/manifests/service.yaml
   - todo-generator/manifests/cronjob.yaml
+  - todo-backup/manifests/cronjob.yaml
 images:
   - name: PROJECT/TODO_APP
     newName: asia-northeast3-docker.pkg.dev/dwk-gke-508806/dwk/todo-app
@@ -21,3 +22,6 @@ images:
   - name: PROJECT/TODO_GENERATOR
     newName: asia-northeast3-docker.pkg.dev/dwk-gke-508806/dwk/todo-generator
     newTag: "3.5"
+  - name: PROJECT/TODO_BACKUP
+    newName: asia-northeast3-docker.pkg.dev/dwk-gke-508806/dwk/todo-backup
+    newTag: "3.10"
