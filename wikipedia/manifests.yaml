@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wikipedia-app
+  namespace: exercises
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wikipedia-app
+  template:
+    metadata:
+      labels:
+        app: wikipedia-app
+    spec:
+      volumes:
+        - name: www
+          emptyDir: {}
+      initContainers:
+        - name: fetch-kubernetes-page
+          image: curlimages/curl:8.10.1
+          securityContext:
+            runAsUser: 0
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - >-
+              curl -L --fail --silent --show-error
+              https://en.wikipedia.org/wiki/Kubernetes
+              -o /www/index.html
+          volumeMounts:
+            - name: www
+              mountPath: /www
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: www
+              mountPath: /usr/share/nginx/html
+        - name: wikipedia-random-sidecar
+          image: curlimages/curl:8.10.1
+          securityContext:
+            runAsUser: 0
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              while true; do
+                seed="$(od -An -N2 -tu2 /dev/urandom | tr -d ' ')"
+                delay=$((300 + seed % 601))
+                echo "Waiting ${delay} seconds before fetching a random Wikipedia page"
+                sleep "$delay"
+
+                if curl -L --fail --silent --show-error \
+                  https://en.wikipedia.org/wiki/Special:Random \
+                  -o /www/random.tmp; then
+                  mv /www/random.tmp /www/random.html
+                  echo "Updated /www/random.html"
+                else
+                  rm -f /www/random.tmp
+                  echo "Random Wikipedia fetch failed; keeping the previous page"
+                fi
+              done
+          volumeMounts:
+            - name: www
+              mountPath: /www
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wikipedia-svc
+  namespace: exercises
+spec:
+  selector:
+    app: wikipedia-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
