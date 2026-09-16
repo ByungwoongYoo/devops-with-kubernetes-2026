@@ -63,6 +63,12 @@ async function incrementAndGetPreviousCount() {
 
 const server = http.createServer(async (req, res) => {
   try {
+    if (req.method === 'GET' && req.url === '/') {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('ok\n');
+      return;
+    }
+
     if (req.method === 'GET' && req.url === '/pingpong') {
       const previous = await incrementAndGetPreviousCount();
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
