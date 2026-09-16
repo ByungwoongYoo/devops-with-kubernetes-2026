@@ -49,6 +49,10 @@ async function initializeDatabase() {
   throw lastError;
 }
 
+async function checkDatabase() {
+  await pool.query('SELECT 1');
+}
+
 async function getCount() {
   const result = await pool.query('SELECT value FROM ping_pong_counter WHERE id = 1');
   return Number(result.rows[0].value);
@@ -69,6 +73,13 @@ async function respondWithPong(res) {
 
 const server = http.createServer(async (req, res) => {
   try {
+    if (req.method === 'GET' && req.url === '/healthz') {
+      await checkDatabase();
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('ok\n');
+      return;
+    }
+
     if (req.method === 'GET' && req.url === '/') {
       await respondWithPong(res);
       return;
