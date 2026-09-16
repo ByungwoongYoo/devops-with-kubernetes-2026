@@ -65,18 +65,21 @@ jobs:
           echo "TODO_APP_IMAGE=$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-app:$BRANCH_TAG-$GITHUB_SHA" >> "$GITHUB_ENV"
           echo "TODO_BACKEND_IMAGE=$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-backend:$BRANCH_TAG-$GITHUB_SHA" >> "$GITHUB_ENV"
           echo "TODO_GENERATOR_IMAGE=$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-generator:$BRANCH_TAG-$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "TODO_BROADCASTER_IMAGE=$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-broadcaster:$BRANCH_TAG-$GITHUB_SHA" >> "$GITHUB_ENV"
 
       - name: Build images
         run: |
           docker build --tag "$TODO_APP_IMAGE" ./todo-app
           docker build --tag "$TODO_BACKEND_IMAGE" ./todo-backend
           docker build --tag "$TODO_GENERATOR_IMAGE" ./todo-generator
+          docker build --tag "$TODO_BROADCASTER_IMAGE" ./broadcaster
 
       - name: Publish images
         run: |
           docker push "$TODO_APP_IMAGE"
           docker push "$TODO_BACKEND_IMAGE"
           docker push "$TODO_GENERATOR_IMAGE"
+          docker push "$TODO_BROADCASTER_IMAGE"
 
       - name: Set up Kustomize
         uses: imranismail/setup-kustomize@v3
@@ -89,8 +92,11 @@ jobs:
           kustomize edit set image PROJECT/TODO_APP="$TODO_APP_IMAGE"
           kustomize edit set image PROJECT/TODO_BACKEND="$TODO_BACKEND_IMAGE"
           kustomize edit set image PROJECT/TODO_GENERATOR="$TODO_GENERATOR_IMAGE"
+          kustomize edit set image PROJECT/TODO_BROADCASTER="$TODO_BROADCASTER_IMAGE"
           kustomize build . | kubectl apply -f -
+          kubectl rollout status deployment/nats-dep --timeout=300s
           kubectl rollout status statefulset/todo-postgres --timeout=300s
           kubectl rollout status deployment/todo-backend-dep --timeout=300s
           kubectl rollout status deployment/todo-app-dep --timeout=300s
-          kubectl get services -o wide
+          kubectl rollout status deployment/todo-broadcaster-dep --timeout=300s
+          kubectl get pods,services -o wide
