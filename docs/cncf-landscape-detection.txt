@@ -1,0 +1,20 @@
+Source: https://landscapeapp.cncf.io/cncf/images/landscape.pdf
+Rendered size: 3842x2763
+GREEN / DIRECT
+- Kubernetes: (90, 680, 250, 840)
+- Helm: (1010, 135, 1150, 280)
+- Argo CD: (1815, 130, 1945, 285)
+- GitHub Actions: (2135, 310, 2225, 405)
+- Istio: (1995, 680, 2150, 840)
+- NGINX: (1145, 860, 1245, 960)
+- Traefik: (1275, 915, 1380, 1020)
+- Prometheus: (2310, 1295, 2470, 1470)
+- Grafana: (2770, 1480, 2865, 1580)
+- Google Kubernetes Engine: (2638, 615, 2730, 710)
+- Knative: (3600, 345, 3715, 475)
+ORANGE / INDIRECT
+- K3s: (2305, 350, 2405, 455)
+- Flannel: (2040, 1160, 2145, 1270)
+- CoreDNS: (580, 675, 725, 840)
+- containerd: (1165, 1030, 1330, 1225)
+Docker was used in the course, but this static landscape edition does not show Docker as a standalone product tile; it is therefore documented in the written list instead of being falsely circled.
