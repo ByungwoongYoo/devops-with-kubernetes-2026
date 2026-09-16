@@ -12,3 +12,7 @@ data:
   PICSUM_URL: https://picsum.photos/1200
   MAX_TODO_LENGTH: "140"
   REQUEST_BODY_LIMIT_BYTES: "10000"
+  DATABASE_HOST: todo-postgres-svc
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: todos
+  DATABASE_USER: postgres
