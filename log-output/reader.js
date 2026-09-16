@@ -4,12 +4,22 @@ const http = require('http');
 const port = Number(process.env.PORT || 3000);
 const logFile = process.env.LOG_FILE || '/usr/src/app/files/log.txt';
 const pingPongUrl = process.env.PING_PONG_URL || 'http://ping-pong-svc:2346/pings';
+const informationFile = process.env.INFORMATION_FILE || '/config/information.txt';
+const message = process.env.MESSAGE || '';
 
 function readStatus() {
   try {
     return fs.readFileSync(logFile, 'utf8').trim();
   } catch (_err) {
     return 'Waiting for log output';
+  }
+}
+
+function readInformation() {
+  try {
+    return fs.readFileSync(informationFile, 'utf8').trim();
+  } catch (_err) {
+    return '';
   }
 }
 
@@ -26,6 +36,7 @@ async function readPongCount() {
 const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/') {
     const status = readStatus();
+    const information = readInformation();
     let count = 0;
     try {
       count = await readPongCount();
@@ -34,7 +45,12 @@ const server = http.createServer(async (req, res) => {
     }
 
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end(`${status}\nPing / Pongs: ${count}\n`);
+    res.end(
+      `file content: ${information}\n` +
+      `env variable: MESSAGE=${message}\n` +
+      `${status}\n` +
+      `Ping / Pongs: ${count}\n`
+    );
     return;
   }
 
