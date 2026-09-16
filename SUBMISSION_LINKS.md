@@ -11,5 +11,9 @@ The course examples use `tree/<exercise>` links. Matching branch snapshots were 
 - Exercise 1.7: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/1.7
 - Exercise 1.8: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/1.8
 - Exercise 1.9: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/1.9
+- Exercise 1.10: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/1.10
+- Exercise 1.11: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/1.11
+- Exercise 1.12: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/1.12
+- Exercise 1.13: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/1.13
 
-Before submitting, run the Kubernetes verification commands in `README.md` on a machine with Docker, k3d, and kubectl installed.
+Exercises 1.1–1.9 were runtime-checked locally. Exercises 1.10–1.13 were prepared from the course requirements and are not claimed as runtime-verified.
