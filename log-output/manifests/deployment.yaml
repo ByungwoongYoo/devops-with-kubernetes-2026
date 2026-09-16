@@ -16,9 +16,12 @@ spec:
       volumes:
         - name: shared-data
           emptyDir: {}
+        - name: log-output-config
+          configMap:
+            name: log-output-config
       containers:
         - name: log-writer
-          image: dwk-log-output-writer:2.1
+          image: dwk-log-output-writer:2.5
           imagePullPolicy: IfNotPresent
           env:
             - name: LOG_FILE
@@ -27,7 +30,7 @@ spec:
             - name: shared-data
               mountPath: /usr/src/app/files
         - name: log-reader
-          image: dwk-log-output-reader:2.1
+          image: dwk-log-output-reader:2.5
           imagePullPolicy: IfNotPresent
           env:
             - name: PORT
@@ -36,8 +39,18 @@ spec:
               value: /usr/src/app/files/log.txt
             - name: PING_PONG_URL
               value: http://ping-pong-svc:2346/pings
+            - name: INFORMATION_FILE
+              value: /config/information.txt
+            - name: MESSAGE
+              valueFrom:
+                configMapKeyRef:
+                  name: log-output-config
+                  key: MESSAGE
           ports:
             - containerPort: 3000
           volumeMounts:
             - name: shared-data
               mountPath: /usr/src/app/files
+            - name: log-output-config
+              mountPath: /config
+              readOnly: true
