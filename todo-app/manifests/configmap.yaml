@@ -10,6 +10,7 @@ data:
   IMAGE_CACHE_TTL_MS: "600000"
   TODO_BACKEND_URL: http://todo-backend-svc:2345
   PICSUM_URL: https://picsum.photos/1200
+  WIKIPEDIA_RANDOM_URL: https://en.wikipedia.org/wiki/Special:Random
   MAX_TODO_LENGTH: "140"
   REQUEST_BODY_LIMIT_BYTES: "10000"
   DATABASE_HOST: todo-postgres-svc
