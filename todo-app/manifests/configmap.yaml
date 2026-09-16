@@ -21,5 +21,6 @@ data:
   NATS_URL: nats://nats-svc:4222
   NATS_SUBJECT: todo.events
   NATS_QUEUE: todo-broadcasters
+  BROADCAST_MODE: forward
   BROADCAST_URL: https://httpbin.org/post
   BROADCAST_USER: bot
