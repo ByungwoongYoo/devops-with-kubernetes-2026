@@ -25,5 +25,9 @@ The course examples use `tree/<exercise>` links. Matching branch snapshots were 
 - Exercise 2.8: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/2.8
 - Exercise 2.9: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/2.9
 - Exercise 2.10: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/2.10
+- Exercise 3.1: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.1
+- Exercise 3.2: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.2
+- Exercise 3.3: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.3
+- Exercise 3.4: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.4
 
-Exercises 1.1–1.9 were runtime-checked locally. Later exercises were prepared from the course requirements and are not claimed as runtime-verified unless explicitly noted.
+Exercises 1.1–1.9 were runtime-checked locally. Later exercises were prepared from the course requirements and are not claimed as runtime-verified unless explicitly noted. Exercises 3.1–3.4 require a configured GKE account/cluster for an actual cloud deployment; the repository snapshots contain the requested Kubernetes resource changes but are not claimed as deployed to GKE from this chat.
