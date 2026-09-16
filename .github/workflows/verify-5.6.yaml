@@ -80,7 +80,7 @@ jobs:
         run: |
           kubectl apply -f serverless/hello-v2.yaml
           kubectl wait --for=condition=Ready ksvc/hello --timeout=240s
-          kubectl apply -f serverless/hello-traffic-split.yaml
+          kubectl patch service.serving.knative.dev hello --type=merge --patch-file serverless/hello-traffic-split-patch.yaml
           kubectl wait --for=condition=Ready ksvc/hello --timeout=240s
           kubectl get ksvc hello -o yaml | sed -n '/traffic:/,$p' | head -40
           URL=$(kubectl get ksvc hello -o jsonpath='{.status.url}')
