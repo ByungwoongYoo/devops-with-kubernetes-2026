@@ -35,8 +35,11 @@ jobs:
           ./istio-1.31.0/bin/istioctl install \
             --set profile=ambient \
             --set values.global.platform=k3d \
+            --set values.cni.cniConfDir=/var/lib/rancher/k3s/agent/etc/cni/net.d \
+            --set values.cni.cniBinDir=/var/lib/rancher/k3s/data/cni \
             --skip-confirmation
           kubectl rollout status deployment/istiod -n istio-system --timeout=180s
+          kubectl rollout status daemonset/istio-cni-node -n istio-system --timeout=180s
           kubectl rollout status daemonset/ztunnel -n istio-system --timeout=180s
 
       - name: Deploy log output and weighted greeters
@@ -69,7 +72,6 @@ jobs:
           TOTAL=$((V1 + V2))
           echo "v1=$V1 v2=$V2 total=$TOTAL"
           test "$TOTAL" -eq 200
-          # Broad bounds make the test robust while still proving both weighted backends are used.
           test "$V1" -ge 120
           test "$V1" -le 180
           test "$V2" -ge 20
