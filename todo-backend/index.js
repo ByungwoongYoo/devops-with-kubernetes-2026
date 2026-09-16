@@ -24,6 +24,15 @@ const pool = new Pool({
   password: required('DATABASE_PASSWORD'),
 });
 
+function logTodo(event, details = {}) {
+  console.log(JSON.stringify({
+    timestamp: new Date().toISOString(),
+    service: 'todo-backend',
+    event,
+    ...details,
+  }));
+}
+
 function sendJson(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(`${JSON.stringify(body)}\n`);
@@ -88,6 +97,7 @@ const server = http.createServer(async (req, res) => {
       try {
         raw = await readBody(req);
       } catch (_error) {
+        logTodo('todo_rejected', { reason: 'request_body_too_large' });
         sendJson(res, 413, { error: 'Request body too large' });
         return;
       }
@@ -96,12 +106,34 @@ const server = http.createServer(async (req, res) => {
       try {
         data = JSON.parse(raw || '{}');
       } catch (_error) {
+        logTodo('todo_rejected', { reason: 'invalid_json' });
         sendJson(res, 400, { error: 'Invalid JSON body' });
         return;
       }
 
       const content = typeof data.content === 'string' ? data.content.trim() : '';
-      if (!content || content.length > maxTodoLength) {
+      logTodo('todo_received', {
+        content,
+        length: content.length,
+      });
+
+      if (!content) {
+        logTodo('todo_rejected', {
+          reason: 'empty_todo',
+          content,
+          length: content.length,
+        });
+        sendJson(res, 400, { error: `Todo must contain 1-${maxTodoLength} characters` });
+        return;
+      }
+
+      if (content.length > maxTodoLength) {
+        logTodo('todo_rejected', {
+          reason: 'too_long',
+          content,
+          length: content.length,
+          maxLength: maxTodoLength,
+        });
         sendJson(res, 400, { error: `Todo must contain 1-${maxTodoLength} characters` });
         return;
       }
@@ -110,6 +142,12 @@ const server = http.createServer(async (req, res) => {
         'INSERT INTO todos (content) VALUES ($1) RETURNING id, content',
         [content]
       );
+
+      logTodo('todo_created', {
+        id: result.rows[0].id,
+        content: result.rows[0].content,
+        length: result.rows[0].content.length,
+      });
       sendJson(res, 201, result.rows[0]);
       return;
     }
