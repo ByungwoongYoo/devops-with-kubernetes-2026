@@ -25,14 +25,37 @@ async function ensureImage() {
   }
 }
 
+function page() {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Todo app</title>
+</head>
+<body>
+  <main style="max-width:760px;margin:40px auto;font-family:system-ui,sans-serif">
+    <h1>Todo app</h1>
+    <img src="/image" alt="Random cached image" style="display:block;width:100%;max-height:420px;object-fit:cover;margin-bottom:24px" />
+    <div style="display:flex;gap:8px;margin-bottom:20px">
+      <input id="todo" type="text" maxlength="140" placeholder="Write a todo (max 140 characters)" style="flex:1;padding:10px" />
+      <button type="button">Send</button>
+    </div>
+    <h2>Todos</h2>
+    <ul>
+      <li>Learn Kubernetes</li>
+      <li>Build the todo application</li>
+      <li>Deploy it with Kubernetes</li>
+    </ul>
+  </main>
+</body>
+</html>`;
+}
+
 const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(`<!doctype html>
-<html><body>
-  <h1>Todo app</h1>
-  <img src="/image" alt="Random cached image" style="max-width:100%;height:auto" />
-</body></html>`);
+    res.end(page());
     return;
   }
 
