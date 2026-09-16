@@ -14,8 +14,6 @@ spec:
           image: dwk-ping-pong:2.7
           imagePullPolicy: IfNotPresent
           env:
-            - name: PORT
-              value: "3000"
             - name: DATABASE_HOST
               value: postgres-ping-pong-svc
             - name: DATABASE_PORT
