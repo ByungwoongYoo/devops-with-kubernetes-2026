@@ -14,11 +14,10 @@ spec:
     spec:
       volumes:
         - name: shared-data
-          persistentVolumeClaim:
-            claimName: shared-log-ping-pong-claim
+          emptyDir: {}
       containers:
         - name: log-writer
-          image: dwk-log-output-writer:1.11
+          image: dwk-log-output-writer:2.1
           imagePullPolicy: IfNotPresent
           env:
             - name: LOG_FILE
@@ -27,15 +26,15 @@ spec:
             - name: shared-data
               mountPath: /usr/src/app/files
         - name: log-reader
-          image: dwk-log-output-reader:1.11
+          image: dwk-log-output-reader:2.1
           imagePullPolicy: IfNotPresent
           env:
             - name: PORT
               value: "3000"
             - name: LOG_FILE
               value: /usr/src/app/files/log.txt
-            - name: COUNTER_FILE
-              value: /usr/src/app/files/ping-pong.txt
+            - name: PING_PONG_URL
+              value: http://ping-pong-svc:2346/pings
           ports:
             - containerPort: 3000
           volumeMounts:
