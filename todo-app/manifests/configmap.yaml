@@ -18,3 +18,8 @@ data:
   DATABASE_NAME: todos
   DATABASE_USER: postgres
   BACKUP_BUCKET: dwk-todo-backups-588051040645
+  NATS_URL: nats://nats-svc:4222
+  NATS_SUBJECT: todo.events
+  NATS_QUEUE: todo-broadcasters
+  BROADCAST_URL: https://httpbin.org/post
+  BROADCAST_USER: bot
