@@ -43,11 +43,28 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud --quiet auth configure-docker "$REGISTRY"
 
+      - name: Choose branch environment
+        shell: bash
+        run: |
+          if [ "$BRANCH" = "main" ]; then
+            NS="project"
+            TAG="main"
+          else
+            NS=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/^-+//; s/-+$//' | cut -c1-63)
+            TAG="$NS"
+          fi
+          if [ -z "$NS" ]; then
+            echo "Could not derive a valid namespace from branch: $BRANCH"
+            exit 1
+          fi
+          echo "NAMESPACE=$NS" >> "$GITHUB_ENV"
+          echo "BRANCH_TAG=$TAG" >> "$GITHUB_ENV"
+
       - name: Form image names
         run: |
-          echo "TODO_APP_IMAGE=$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-app:$BRANCH-$GITHUB_SHA" >> "$GITHUB_ENV"
-          echo "TODO_BACKEND_IMAGE=$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-backend:$BRANCH-$GITHUB_SHA" >> "$GITHUB_ENV"
-          echo "TODO_GENERATOR_IMAGE=$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-generator:$BRANCH-$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "TODO_APP_IMAGE=$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-app:$BRANCH_TAG-$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "TODO_BACKEND_IMAGE=$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-backend:$BRANCH_TAG-$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "TODO_GENERATOR_IMAGE=$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-generator:$BRANCH_TAG-$GITHUB_SHA" >> "$GITHUB_ENV"
 
       - name: Build images
         run: |
@@ -64,11 +81,11 @@ jobs:
       - name: Set up Kustomize
         uses: imranismail/setup-kustomize@v3
 
-      - name: Deploy
+      - name: Deploy branch environment
         run: |
-          kubectl create namespace project || true
-          kubectl config set-context --current --namespace=project
-          kustomize edit set namespace project
+          kubectl create namespace "$NAMESPACE" || true
+          kubectl config set-context --current --namespace="$NAMESPACE"
+          kustomize edit set namespace "$NAMESPACE"
           kustomize edit set image PROJECT/TODO_APP="$TODO_APP_IMAGE"
           kustomize edit set image PROJECT/TODO_BACKEND="$TODO_BACKEND_IMAGE"
           kustomize edit set image PROJECT/TODO_GENERATOR="$TODO_GENERATOR_IMAGE"
