@@ -2,29 +2,29 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: project
 resources:
-  - todo-app/manifests/configmap.yaml
-  - todo-app/manifests/persistentvolumeclaim.yaml
-  - todo-app/manifests/deployment.yaml
-  - todo-app/manifests/service.yaml
-  - todo-backend/manifests/postgres-secret.yaml
-  - todo-backend/manifests/postgres.yaml
-  - todo-backend/manifests/deployment.yaml
-  - todo-backend/manifests/service.yaml
-  - todo-generator/manifests/cronjob.yaml
-  - todo-backup/manifests/cronjob.yaml
-  - nats/manifests/deployment.yaml
-  - nats/manifests/service.yaml
-  - broadcaster/manifests/deployment.yaml
+- todo-app/manifests/configmap.yaml
+- todo-app/manifests/persistentvolumeclaim.yaml
+- todo-app/manifests/deployment.yaml
+- todo-app/manifests/service.yaml
+- todo-backend/manifests/postgres-secret.yaml
+- todo-backend/manifests/postgres.yaml
+- todo-backend/manifests/deployment.yaml
+- todo-backend/manifests/service.yaml
+- todo-generator/manifests/cronjob.yaml
+- todo-backup/manifests/cronjob.yaml
+- nats/manifests/deployment.yaml
+- nats/manifests/service.yaml
+- broadcaster/manifests/deployment.yaml
 images:
-  - name: PROJECT/TODO_APP
-    newName: asia-northeast3-docker.pkg.dev/dwk-gke-508806/dwk/todo-app
-    newTag: "3.5"
-  - name: PROJECT/TODO_BACKEND
-    newName: asia-northeast3-docker.pkg.dev/dwk-gke-508806/dwk/todo-backend
-    newTag: "3.5"
-  - name: PROJECT/TODO_GENERATOR
-    newName: asia-northeast3-docker.pkg.dev/dwk-gke-508806/dwk/todo-generator
-    newTag: "3.5"
-  - name: PROJECT/TODO_BROADCASTER
-    newName: asia-northeast3-docker.pkg.dev/dwk-gke-508806/dwk/todo-broadcaster
-    newTag: "4.6"
+- name: PROJECT/TODO_APP
+  newName: asia-northeast3-docker.pkg.dev/dwk-gke-508806/dwk/todo-app
+  newTag: 41d6f9b68da46c0b27875d51638cd956f95dcbe3
+- name: PROJECT/TODO_BACKEND
+  newName: asia-northeast3-docker.pkg.dev/dwk-gke-508806/dwk/todo-backend
+  newTag: 41d6f9b68da46c0b27875d51638cd956f95dcbe3
+- name: PROJECT/TODO_BROADCASTER
+  newName: asia-northeast3-docker.pkg.dev/dwk-gke-508806/dwk/todo-broadcaster
+  newTag: 41d6f9b68da46c0b27875d51638cd956f95dcbe3
+- name: PROJECT/TODO_GENERATOR
+  newName: asia-northeast3-docker.pkg.dev/dwk-gke-508806/dwk/todo-generator
+  newTag: 41d6f9b68da46c0b27875d51638cd956f95dcbe3
