@@ -26,6 +26,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: "4.7"
+          fetch-depth: 0
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
@@ -66,6 +67,8 @@ jobs:
             echo "No GitOps state change"
           else
             git commit -m "Release log-output $GITHUB_SHA [skip ci]"
+            git fetch origin 4.7
+            git rebase origin/4.7
             git push origin HEAD:4.7
           fi
 
