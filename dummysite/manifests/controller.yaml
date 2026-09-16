@@ -1,0 +1,379 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dummysite-controller-account
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dummysite-controller-role
+rules:
+  - apiGroups:
+      - stable.dwk
+    resources:
+      - dummysites
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - services
+    verbs:
+      - get
+      - list
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+    verbs:
+      - get
+      - list
+      - create
+      - update
+      - patch
+      - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dummysite-controller-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dummysite-controller-role
+subjects:
+  - kind: ServiceAccount
+    name: dummysite-controller-account
+    namespace: default
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dummysite-controller-code
+  namespace: default
+data:
+  controller.py: |
+    import hashlib
+    import json
+    import os
+    import ssl
+    import sys
+    import time
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    API_HOST = os.environ["KUBERNETES_SERVICE_HOST"]
+    API_PORT = os.environ.get("KUBERNETES_SERVICE_PORT_HTTPS", "443")
+    API_SERVER = f"https://{API_HOST}:{API_PORT}"
+    TOKEN_FILE = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    CA_FILE = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+    MAX_HTML_BYTES = 900_000
+
+    with open(TOKEN_FILE, "r", encoding="utf-8") as token_file:
+        TOKEN = token_file.read().strip()
+
+    SSL_CONTEXT = ssl.create_default_context(cafile=CA_FILE)
+
+
+    def log(message):
+        print(message, flush=True)
+
+
+    def api_json(method, path, body=None, timeout=30):
+        headers = {
+            "Authorization": f"Bearer {TOKEN}",
+            "Accept": "application/json",
+        }
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+
+        request = urllib.request.Request(
+            API_SERVER + path,
+            data=data,
+            headers=headers,
+            method=method,
+        )
+        with urllib.request.urlopen(
+            request,
+            context=SSL_CONTEXT,
+            timeout=timeout,
+        ) as response:
+            raw = response.read()
+            return json.loads(raw) if raw else {}
+
+
+    def object_name(site_name, suffix=""):
+        raw = f"dummysite-{site_name}{suffix}"
+        if len(raw) <= 63:
+            return raw
+        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
+        head = raw[: 63 - len(digest) - 1].rstrip("-")
+        return f"{head}-{digest}"
+
+
+    def create_if_missing(collection_path, name, body):
+        object_path = f"{collection_path}/{urllib.parse.quote(name, safe='')}"
+        try:
+            api_json("GET", object_path)
+            return False
+        except urllib.error.HTTPError as error:
+            if error.code != 404:
+                raise
+
+        try:
+            api_json("POST", collection_path, body)
+            return True
+        except urllib.error.HTTPError as error:
+            if error.code == 409:
+                return False
+            raise
+
+
+    def fetch_html(url):
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("website_url must use http:// or https://")
+
+        request = urllib.request.Request(
+            url,
+            headers={"User-Agent": "DummySiteController/1.0"},
+        )
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = response.read(MAX_HTML_BYTES + 1)
+            if len(payload) > MAX_HTML_BYTES:
+                raise ValueError(
+                    f"downloaded HTML exceeds {MAX_HTML_BYTES} bytes"
+                )
+            charset = response.headers.get_content_charset() or "utf-8"
+            return payload.decode(charset, errors="replace")
+
+
+    def reconcile(site):
+        metadata = site.get("metadata", {})
+        spec = site.get("spec", {})
+        site_name = metadata["name"]
+        namespace = metadata.get("namespace", "default")
+        uid = metadata["uid"]
+        website_url = spec["website_url"]
+
+        workload_name = object_name(site_name)
+        config_name = object_name(site_name, "-html")
+        owner_reference = [{
+            "apiVersion": "stable.dwk/v1",
+            "kind": "DummySite",
+            "name": site_name,
+            "uid": uid,
+            "controller": True,
+        }]
+
+        configmaps_path = (
+            f"/api/v1/namespaces/{urllib.parse.quote(namespace, safe='')}/configmaps"
+        )
+        deployments_path = (
+            f"/apis/apps/v1/namespaces/{urllib.parse.quote(namespace, safe='')}/deployments"
+        )
+        services_path = (
+            f"/api/v1/namespaces/{urllib.parse.quote(namespace, safe='')}/services"
+        )
+
+        config_path = (
+            f"{configmaps_path}/{urllib.parse.quote(config_name, safe='')}"
+        )
+        try:
+            api_json("GET", config_path)
+            config_exists = True
+        except urllib.error.HTTPError as error:
+            if error.code != 404:
+                raise
+            config_exists = False
+
+        if not config_exists:
+            log(f"Fetching {website_url} for DummySite {namespace}/{site_name}")
+            html = fetch_html(website_url)
+            configmap = {
+                "apiVersion": "v1",
+                "kind": "ConfigMap",
+                "metadata": {
+                    "name": config_name,
+                    "namespace": namespace,
+                    "ownerReferences": owner_reference,
+                },
+                "data": {"index.html": html},
+            }
+            create_if_missing(configmaps_path, config_name, configmap)
+
+        labels = {
+            "app.kubernetes.io/name": "dummysite",
+            "app.kubernetes.io/instance": workload_name,
+        }
+
+        deployment = {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": {
+                "name": workload_name,
+                "namespace": namespace,
+                "ownerReferences": owner_reference,
+            },
+            "spec": {
+                "replicas": 1,
+                "selector": {"matchLabels": labels},
+                "template": {
+                    "metadata": {"labels": labels},
+                    "spec": {
+                        "containers": [{
+                            "name": "nginx",
+                            "image": "nginx:1.27-alpine",
+                            "ports": [{"containerPort": 80}],
+                            "volumeMounts": [{
+                                "name": "html",
+                                "mountPath": "/usr/share/nginx/html",
+                                "readOnly": True,
+                            }],
+                        }],
+                        "volumes": [{
+                            "name": "html",
+                            "configMap": {
+                                "name": config_name,
+                                "items": [{
+                                    "key": "index.html",
+                                    "path": "index.html",
+                                }],
+                            },
+                        }],
+                    },
+                },
+            },
+        }
+        create_if_missing(deployments_path, workload_name, deployment)
+
+        service = {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "name": workload_name,
+                "namespace": namespace,
+                "ownerReferences": owner_reference,
+            },
+            "spec": {
+                "selector": labels,
+                "ports": [{
+                    "name": "http",
+                    "port": 80,
+                    "targetPort": 80,
+                }],
+            },
+        }
+        create_if_missing(services_path, workload_name, service)
+        log(f"DummySite {namespace}/{site_name} is reconciled")
+
+
+    def list_and_reconcile():
+        listing = api_json("GET", "/apis/stable.dwk/v1/dummysites")
+        for site in listing.get("items", []):
+            try:
+                reconcile(site)
+            except Exception as error:
+                log(f"Reconcile failed for {site.get('metadata', {}).get('name')}: {error}")
+        return listing.get("metadata", {}).get("resourceVersion", "")
+
+
+    def watch_once(resource_version):
+        query = urllib.parse.urlencode({
+            "watch": "true",
+            "allowWatchBookmarks": "true",
+            "timeoutSeconds": "300",
+            "resourceVersion": resource_version,
+        })
+        path = f"/apis/stable.dwk/v1/dummysites?{query}"
+        request = urllib.request.Request(
+            API_SERVER + path,
+            headers={
+                "Authorization": f"Bearer {TOKEN}",
+                "Accept": "application/json",
+            },
+            method="GET",
+        )
+
+        with urllib.request.urlopen(
+            request,
+            context=SSL_CONTEXT,
+            timeout=310,
+        ) as response:
+            for raw_line in response:
+                if not raw_line.strip():
+                    continue
+                event = json.loads(raw_line)
+                event_type = event.get("type")
+                site = event.get("object", {})
+                if event_type in ("ADDED", "MODIFIED"):
+                    try:
+                        reconcile(site)
+                    except Exception as error:
+                        log(
+                            "Reconcile failed for "
+                            f"{site.get('metadata', {}).get('name')}: {error}"
+                        )
+                elif event_type == "ERROR":
+                    log(f"Watch error event: {site}")
+                    return
+
+
+    def main():
+        log("DummySite controller started")
+        while True:
+            try:
+                resource_version = list_and_reconcile()
+                watch_once(resource_version)
+            except Exception as error:
+                log(f"Controller loop failed: {error}")
+                time.sleep(5)
+
+
+    if __name__ == "__main__":
+        main()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dummysite-controller
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dummysite-controller
+  template:
+    metadata:
+      labels:
+        app: dummysite-controller
+    spec:
+      serviceAccountName: dummysite-controller-account
+      containers:
+        - name: controller
+          image: python:3.12-slim
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - -u
+            - /app/controller.py
+          volumeMounts:
+            - name: controller-code
+              mountPath: /app/controller.py
+              subPath: controller.py
+              readOnly: true
+      volumes:
+        - name: controller-code
+          configMap:
+            name: dummysite-controller-code
