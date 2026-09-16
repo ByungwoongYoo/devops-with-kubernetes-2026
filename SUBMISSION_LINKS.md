@@ -19,5 +19,7 @@ The course examples use `tree/<exercise>` links. Matching branch snapshots were 
 - Exercise 2.2: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/2.2
 - Exercise 2.3: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/2.3
 - Exercise 2.4: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/2.4
+- Exercise 2.5: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/2.5
+- Exercise 2.6: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/2.6
 
 Exercises 1.1–1.9 were runtime-checked locally. Later exercises were prepared from the course requirements and are not claimed as runtime-verified unless explicitly noted.
