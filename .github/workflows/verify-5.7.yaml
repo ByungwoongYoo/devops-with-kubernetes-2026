@@ -1,0 +1,89 @@
+name: verify-5.7
+
+on:
+  push:
+    branches: ["5.7"]
+  workflow_dispatch:
+
+jobs:
+  verify-pingpong-knative:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k3d and create Knative-compatible cluster
+        run: |
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          k3d cluster create verify57 \
+            --port 8082:30080@agent:0 \
+            -p 8081:80@loadbalancer \
+            --agents 2 \
+            --k3s-arg '--disable=traefik@server:0' \
+            --image rancher/k3s:v1.34.1-k3s1 \
+            --wait
+
+      - name: Install Knative Serving with Kourier and Magic DNS
+        run: |
+          kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.23.0/serving-crds.yaml
+          kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.23.0/serving-core.yaml
+          kubectl apply -f https://github.com/knative-extensions/net-kourier/releases/download/knative-v1.23.0/kourier.yaml
+          kubectl patch configmap/config-network \
+            -n knative-serving --type merge \
+            -p '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}'
+          kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.23.0/serving-default-domain.yaml
+          kubectl wait --for=condition=Available deployment --all -n knative-serving --timeout=300s
+          kubectl wait --for=condition=Available deployment --all -n kourier-system --timeout=300s
+
+      - name: Build and import local application images
+        run: |
+          docker build -t dwk-ping-pong:2.7 ./ping-pong
+          docker build -t dwk-log-output-writer:2.5 -f log-output/Dockerfile.writer ./log-output
+          docker build -t dwk-log-output-reader:5.3 -f log-output/Dockerfile.reader ./log-output
+          k3d image import -c verify57 \
+            dwk-ping-pong:2.7 \
+            dwk-log-output-writer:2.5 \
+            dwk-log-output-reader:5.3
+
+      - name: Deploy PostgreSQL and serverless Ping-pong
+        run: |
+          kubectl create namespace exercises --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -f ping-pong/manifests/postgres.yaml
+          kubectl rollout status statefulset/postgres-ping-pong -n exercises --timeout=240s
+          kubectl apply -f ping-pong/manifests/knative-service.yaml
+          kubectl wait --for=condition=Ready ksvc/pingpong -n exercises --timeout=300s
+          kubectl get ksvc pingpong -n exercises
+          kubectl get revision -n exercises
+
+      - name: Verify Knative Ping-pong endpoint
+        run: |
+          kubectl run curltest -n exercises --image=curlimages/curl:8.10.1 --restart=Never --command -- sleep 3600
+          kubectl wait --for=condition=Ready pod/curltest -n exercises --timeout=120s
+          kubectl exec -n exercises curltest -- curl -fsS http://pingpong.exercises.svc.cluster.local/ | tee /tmp/pong1.txt
+          grep -q 'pong 0' /tmp/pong1.txt
+          kubectl exec -n exercises curltest -- curl -fsS http://pingpong.exercises.svc.cluster.local/ | tee /tmp/pong2.txt
+          grep -q 'pong 1' /tmp/pong2.txt
+          kubectl exec -n exercises curltest -- curl -fsS http://pingpong.exercises.svc.cluster.local/pings | tee /tmp/count.txt
+          grep -qx '2' /tmp/count.txt
+
+      - name: Deploy Log Output using fully qualified Knative service DNS
+        run: |
+          kubectl apply -f log-output/manifests/configmap.yaml
+          kubectl apply -f log-output/manifests/service.yaml
+          kubectl apply -f log-output/manifests/deployment.yaml
+          kubectl rollout status deployment/log-output-dep -n exercises --timeout=180s
+          kubectl get deployment/log-output-dep -n exercises -o yaml | grep -F 'http://pingpong.exercises.svc.cluster.local/pings'
+          kubectl exec -n exercises curltest -- curl -fsS http://log-output-svc/ | tee /tmp/log.txt
+          grep -q 'Ping / Pongs: 2' /tmp/log.txt
+
+      - name: Verify scale-to-zero remains available through Knative
+        run: |
+          for i in $(seq 1 40); do
+            COUNT=$(kubectl get pods -n exercises -l serving.knative.dev/service=pingpong --no-headers 2>/dev/null | wc -l)
+            if [ "$COUNT" -eq 0 ]; then break; fi
+            sleep 5
+          done
+          COUNT=$(kubectl get pods -n exercises -l serving.knative.dev/service=pingpong --no-headers 2>/dev/null | wc -l)
+          test "$COUNT" -eq 0
+          kubectl exec -n exercises curltest -- curl -fsS http://pingpong.exercises.svc.cluster.local/pings | grep -qx '2'
+          kubectl wait --for=condition=Ready ksvc/pingpong -n exercises --timeout=120s
