@@ -15,7 +15,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: todo-generator
-              image: dwk-todo-generator:2.9
+              image: PROJECT/TODO_GENERATOR
               imagePullPolicy: IfNotPresent
               env:
                 - name: TODO_BACKEND_URL
