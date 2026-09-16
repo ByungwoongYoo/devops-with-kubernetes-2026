@@ -30,7 +30,7 @@ spec:
             - name: shared-data
               mountPath: /usr/src/app/files
         - name: log-reader
-          image: dwk-log-output-reader:2.5
+          image: dwk-log-output-reader:4.1
           imagePullPolicy: IfNotPresent
           env:
             - name: PORT
@@ -48,6 +48,14 @@ spec:
                   key: MESSAGE
           ports:
             - containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 1
           volumeMounts:
             - name: shared-data
               mountPath: /usr/src/app/files
