@@ -8,7 +8,7 @@ on:
 jobs:
   verify-istio-ambient:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -33,10 +33,28 @@ jobs:
       - name: Install Gateway API and Istio ambient for k3d
         run: |
           kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.0/experimental-install.yaml
+          set +e
           ./istio-1.31.0/bin/istioctl install \
             --set profile=ambient \
             --set values.global.platform=k3d \
             --skip-confirmation
+          RC=$?
+          set -e
+          if [ "$RC" -ne 0 ]; then
+            echo '=== Istio pods ==='
+            kubectl get pods -n istio-system -o wide || true
+            echo '=== ztunnel DaemonSet ==='
+            kubectl describe daemonset/ztunnel -n istio-system || true
+            echo '=== ztunnel pod logs ==='
+            for p in $(kubectl get pod -n istio-system -l app=ztunnel -o name 2>/dev/null); do
+              echo "--- $p ---"
+              kubectl logs -n istio-system "$p" --all-containers --tail=200 || true
+              kubectl describe -n istio-system "$p" || true
+            done
+            echo '=== recent events ==='
+            kubectl get events -n istio-system --sort-by=.lastTimestamp | tail -100 || true
+            exit "$RC"
+          fi
           kubectl rollout status deployment/istiod -n istio-system --timeout=180s
           kubectl rollout status daemonset/istio-cni-node -n istio-system --timeout=180s
           kubectl rollout status daemonset/ztunnel -n istio-system --timeout=180s
