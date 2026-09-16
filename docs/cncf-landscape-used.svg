@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1100" viewBox="0 0 1600 1100">
+  <rect width="1600" height="1100" fill="white"/>
+  <style>
+    .title { font: 700 46px Arial, sans-serif; fill: #111; }
+    .subtitle { font: 24px Arial, sans-serif; fill: #444; }
+    .label { font: 700 24px Arial, sans-serif; fill: #111; text-anchor: middle; dominant-baseline: middle; }
+    .small { font: 20px Arial, sans-serif; fill: #333; }
+    .direct { fill: #f7fff8; stroke: #198754; stroke-width: 9; }
+    .indirect { fill: #fffaf0; stroke: #e67e22; stroke-width: 9; }
+  </style>
+
+  <text x="70" y="80" class="title">CNCF Cloud Native Landscape — technologies used in this course</text>
+  <text x="70" y="125" class="subtitle">Green = directly used · Orange = indirectly used dependency</text>
+
+  <!-- Directly used -->
+  <circle cx="190" cy="260" r="105" class="direct"/><text x="190" y="260" class="label">Kubernetes</text>
+  <circle cx="500" cy="260" r="105" class="direct"/><text x="500" y="260" class="label">Docker</text>
+  <circle cx="810" cy="260" r="105" class="direct"/><text x="810" y="260" class="label">Helm</text>
+  <circle cx="1120" cy="260" r="105" class="direct"/><text x="1120" y="260" class="label">Prometheus</text>
+  <circle cx="1430" cy="260" r="105" class="direct"/><text x="1430" y="260" class="label">Grafana</text>
+
+  <circle cx="190" cy="510" r="105" class="direct"/><text x="190" y="510" class="label">Argo CD</text>
+  <circle cx="500" cy="510" r="105" class="direct"/><text x="500" y="510" class="label">Istio</text>
+  <circle cx="810" cy="510" r="105" class="direct"/><text x="810" y="510" class="label">Knative</text>
+  <circle cx="1120" cy="510" r="105" class="direct"/><text x="1120" y="510" class="label">NGINX</text>
+  <circle cx="1430" cy="510" r="105" class="direct"/><text x="1430" y="510" class="label">Traefik</text>
+
+  <circle cx="345" cy="760" r="105" class="direct"/><text x="345" y="744" class="label">GitHub</text><text x="345" y="779" class="label">Actions</text>
+  <circle cx="655" cy="760" r="105" class="direct"/><text x="655" y="744" class="label">Google</text><text x="655" y="779" class="label">Kubernetes Engine</text>
+
+  <!-- Indirectly used -->
+  <circle cx="965" cy="760" r="105" class="indirect"/><text x="965" y="760" class="label">K3s</text>
+  <circle cx="1275" cy="760" r="105" class="indirect"/><text x="1275" y="760" class="label">Flannel</text>
+  <circle cx="500" cy="990" r="90" class="indirect"/><text x="500" y="990" class="label">CoreDNS</text>
+  <circle cx="810" cy="990" r="90" class="indirect"/><text x="810" y="990" class="label">containerd</text>
+
+  <text x="1000" y="980" class="small">Selection list and usage details:</text>
+  <text x="1000" y="1015" class="small">exercise-5.8-landscape.md</text>
+  <text x="1000" y="1050" class="small">Source landscape: https://landscape.cncf.io/</text>
+</svg>
