@@ -18,7 +18,7 @@ spec:
             claimName: todo-image-claim
       containers:
         - name: todo-app
-          image: dwk-todo-app:1.13
+          image: dwk-todo-app:2.2
           imagePullPolicy: IfNotPresent
           env:
             - name: PORT
@@ -27,6 +27,8 @@ spec:
               value: /usr/src/app/files/image.jpg
             - name: IMAGE_CACHE_TTL_MS
               value: "600000"
+            - name: TODO_BACKEND_URL
+              value: http://todo-backend-svc:2345
           ports:
             - containerPort: 3000
           volumeMounts:
