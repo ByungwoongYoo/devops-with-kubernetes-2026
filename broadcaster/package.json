@@ -1,0 +1,8 @@
+{
+  "name": "dwk-todo-broadcaster",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {"start": "node index.js"},
+  "dependencies": {"nats": "^2.29.1"},
+  "engines": {"node": ">=20"}
+}
