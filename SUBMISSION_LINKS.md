@@ -33,6 +33,15 @@ The course examples use `tree/<exercise>` links. Matching branch snapshots were 
 - Exercise 3.6: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.6
 - Exercise 3.7: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.7
 - Exercise 3.8: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.8
+- Exercise 3.9: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.9
+- Exercise 3.10: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.10
+- Exercise 3.11: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.11
+- Exercise 3.12: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.12
+- Exercise 4.1: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/4.1
+- Exercise 4.2: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/4.2
+- Exercise 4.3: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/4.3
+- Exercise 4.4: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/4.4
+- Exercise 4.5: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/4.5
 
 Runtime verification status:
 
