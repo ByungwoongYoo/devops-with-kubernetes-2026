@@ -40,6 +40,11 @@ spec:
                 configMapKeyRef:
                   name: project-config
                   key: NATS_QUEUE
+            - name: BROADCAST_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: BROADCAST_MODE
             - name: BROADCAST_URL
               valueFrom:
                 configMapKeyRef:
