@@ -1,0 +1,83 @@
+name: verify-5.2
+
+on:
+  push:
+    branches: ["5.2"]
+  workflow_dispatch:
+
+jobs:
+  verify-istio-ambient:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k3d and create Kubernetes 1.34 cluster
+        run: |
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          k3d cluster create verify52 \
+            --api-port 6550 \
+            -p '9080:80@loadbalancer' \
+            -p '9443:443@loadbalancer' \
+            --agents 2 \
+            --k3s-arg '--disable=traefik@server:*' \
+            --image rancher/k3s:v1.34.1-k3s1 \
+            --wait
+          kubectl get nodes -o wide
+
+      - name: Download Istio 1.31
+        run: |
+          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.31.0 sh -
+          echo "$PWD/istio-1.31.0/bin" >> "$GITHUB_PATH"
+
+      - name: Install Gateway API and Istio ambient for k3d
+        run: |
+          kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.0/experimental-install.yaml
+          ./istio-1.31.0/bin/istioctl install \
+            --set profile=ambient \
+            --set values.global.platform=k3d \
+            --skip-confirmation
+          kubectl rollout status deployment/istiod -n istio-system --timeout=180s
+          kubectl rollout status daemonset/istio-cni-node -n istio-system --timeout=180s
+          kubectl rollout status daemonset/ztunnel -n istio-system --timeout=180s
+          kubectl get pods -n istio-system
+
+      - name: Deploy Bookinfo into ambient mesh
+        run: |
+          kubectl label namespace default istio.io/dataplane-mode=ambient --overwrite
+          kubectl apply -f istio-1.31.0/samples/bookinfo/platform/kube/bookinfo.yaml
+          kubectl apply -f istio-1.31.0/samples/bookinfo/platform/kube/bookinfo-versions.yaml
+          kubectl wait --for=condition=Ready pod --all -n default --timeout=240s
+          kubectl apply -f istio-1.31.0/samples/bookinfo/gateway-api/bookinfo-gateway.yaml
+          kubectl annotate gateway bookinfo-gateway networking.istio.io/service-type=ClusterIP --overwrite
+          kubectl wait --for=condition=Programmed gateway/bookinfo-gateway --timeout=180s
+          ./istio-1.31.0/bin/istioctl ztunnel-config workloads | tee /tmp/ztunnel.txt
+          grep -q productpage /tmp/ztunnel.txt
+
+      - name: Install Prometheus and Kiali addons
+        run: |
+          kubectl apply -f istio-1.31.0/samples/addons/prometheus.yaml
+          kubectl apply -f istio-1.31.0/samples/addons/kiali.yaml
+          kubectl rollout status deployment/prometheus -n istio-system --timeout=240s
+          kubectl rollout status deployment/kiali -n istio-system --timeout=240s
+          kubectl get pods -n istio-system
+
+      - name: Generate traffic and verify Bookinfo through Istio Gateway
+        run: |
+          kubectl port-forward svc/bookinfo-gateway-istio 18080:80 >/tmp/bookinfo-pf.log 2>&1 &
+          PF_PID=$!
+          trap 'kill $PF_PID || true' EXIT
+          sleep 4
+          for i in $(seq 1 20); do
+            curl --fail --retry 5 --retry-delay 1 http://127.0.0.1:18080/productpage >/tmp/productpage.html
+          done
+          grep -q "Book Details" /tmp/productpage.html
+          kubectl get gateway,httproute
+          kubectl get pods -n istio-system
+
+      - name: Exercise cleanup
+        if: always()
+        run: |
+          kubectl delete -f istio-1.31.0/samples/bookinfo/gateway-api/bookinfo-gateway.yaml --ignore-not-found || true
+          kubectl delete -f istio-1.31.0/samples/bookinfo/platform/kube/bookinfo-versions.yaml --ignore-not-found || true
+          kubectl delete -f istio-1.31.0/samples/bookinfo/platform/kube/bookinfo.yaml --ignore-not-found || true
