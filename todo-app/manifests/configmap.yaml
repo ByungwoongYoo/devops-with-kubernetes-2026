@@ -17,3 +17,4 @@ data:
   DATABASE_PORT: "5432"
   DATABASE_NAME: todos
   DATABASE_USER: postgres
+  BACKUP_BUCKET: dwk-todo-backups-588051040645
