@@ -1,26 +1,99 @@
 const http = require('http');
+const { Pool } = require('pg');
 
-const port = Number(process.env.PORT || 3000);
-let counter = 0;
+function required(name) {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing required environment variable ${name}`);
+  return value;
+}
 
-const server = http.createServer((req, res) => {
-  if (req.method === 'GET' && req.url === '/pingpong') {
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end(`pong ${counter}\n`);
-    counter += 1;
-    return;
-  }
+function requiredNumber(name) {
+  const value = Number(required(name));
+  if (!Number.isFinite(value)) throw new Error(`Environment variable ${name} must be numeric`);
+  return value;
+}
 
-  if (req.method === 'GET' && req.url === '/pings') {
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end(`${counter}\n`);
-    return;
-  }
-
-  res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-  res.end('Not found\n');
+const port = requiredNumber('PORT');
+const pool = new Pool({
+  host: required('DATABASE_HOST'),
+  port: requiredNumber('DATABASE_PORT'),
+  database: required('DATABASE_NAME'),
+  user: required('DATABASE_USER'),
+  password: required('DATABASE_PASSWORD'),
 });
 
-server.listen(port, '0.0.0.0', () => {
-  console.log(`Ping-pong server started in port ${port}`);
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function initializeDatabase() {
+  let lastError;
+  for (let attempt = 1; attempt <= 30; attempt += 1) {
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ping_pong_counter (
+          id SMALLINT PRIMARY KEY,
+          value INTEGER NOT NULL
+        )
+      `);
+      await pool.query(
+        'INSERT INTO ping_pong_counter (id, value) VALUES (1, 0) ON CONFLICT (id) DO NOTHING'
+      );
+      return;
+    } catch (error) {
+      lastError = error;
+      console.log(`Database not ready (attempt ${attempt}/30): ${error.message}`);
+      await delay(2000);
+    }
+  }
+  throw lastError;
+}
+
+async function getCount() {
+  const result = await pool.query('SELECT value FROM ping_pong_counter WHERE id = 1');
+  return Number(result.rows[0].value);
+}
+
+async function incrementAndGetPreviousCount() {
+  const result = await pool.query(
+    'UPDATE ping_pong_counter SET value = value + 1 WHERE id = 1 RETURNING value - 1 AS previous'
+  );
+  return Number(result.rows[0].previous);
+}
+
+const server = http.createServer(async (req, res) => {
+  try {
+    if (req.method === 'GET' && req.url === '/pingpong') {
+      const previous = await incrementAndGetPreviousCount();
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(`pong ${previous}\n`);
+      return;
+    }
+
+    if (req.method === 'GET' && req.url === '/pings') {
+      const count = await getCount();
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(`${count}\n`);
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Not found\n');
+  } catch (error) {
+    console.error(error);
+    res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Database unavailable\n');
+  }
+});
+
+async function main() {
+  await initializeDatabase();
+  server.listen(port, '0.0.0.0', () => {
+    console.log(`Ping-pong server started in port ${port}`);
+  });
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
 });
