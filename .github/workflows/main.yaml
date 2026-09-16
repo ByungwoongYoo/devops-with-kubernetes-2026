@@ -76,8 +76,8 @@ jobs:
 
       - name: Update desired state on main
         run: |
-          # A tagged build is produced from the tagged commit, but the desired
-          # production state is committed to main where ArgoCD watches it.
+          # Build from the triggering revision. Desired cluster state is kept
+          # on main where ArgoCD watches the two environment overlays.
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             git fetch origin main
             git checkout -B main origin/main
@@ -97,6 +97,8 @@ jobs:
             echo "No desired-state change"
           else
             git commit -m "Release $RELEASE_KIND $GITHUB_SHA [skip ci]"
+            git fetch origin main
+            git rebase origin/main
             git push origin HEAD:main
           fi
 
