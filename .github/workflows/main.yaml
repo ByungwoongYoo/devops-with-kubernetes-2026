@@ -1,28 +1,31 @@
-name: Release project
+name: GitOps release log output
 
 on:
   push:
+    branches:
+      - "4.7"
+    paths:
+      - "log-output/**"
+      - ".github/workflows/main.yaml"
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 env:
   PROJECT_ID: ${{ secrets.GKE_PROJECT }}
-  GKE_CLUSTER: dwk-cluster
-  GKE_ZONE: asia-northeast3-a
   REGISTRY: asia-northeast3-docker.pkg.dev
   REPOSITORY: dwk
-  BRANCH: ${{ github.ref_name }}
 
 jobs:
-  build-publish-deploy:
-    name: Build, Publish and Deploy
+  build-publish-release:
     runs-on: ubuntu-latest
     environment: GKE_PROJECT
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: "4.7"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
@@ -33,70 +36,40 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v3
 
-      - name: Get GKE credentials
-        uses: google-github-actions/get-gke-credentials@v3
-        with:
-          cluster_name: ${{ env.GKE_CLUSTER }}
-          project_id: ${{ env.PROJECT_ID }}
-          location: ${{ env.GKE_ZONE }}
-
       - name: Configure Docker for Artifact Registry
         run: gcloud --quiet auth configure-docker "$REGISTRY"
 
-      - name: Choose branch environment
-        shell: bash
+      - name: Build and publish log-output images
         run: |
-          if [ "$BRANCH" = "main" ]; then
-            NS="project"
-            TAG="main"
-          else
-            NS=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/^-+//; s/-+$//' | cut -c1-63)
-            TAG="$NS"
-          fi
-          if [ -z "$NS" ]; then
-            echo "Could not derive a valid namespace from branch: $BRANCH"
-            exit 1
-          fi
-          echo "NAMESPACE=$NS" >> "$GITHUB_ENV"
-          echo "BRANCH_TAG=$TAG" >> "$GITHUB_ENV"
-
-      - name: Form image names
-        run: |
-          echo "TODO_APP_IMAGE=$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-app:$BRANCH_TAG-$GITHUB_SHA" >> "$GITHUB_ENV"
-          echo "TODO_BACKEND_IMAGE=$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-backend:$BRANCH_TAG-$GITHUB_SHA" >> "$GITHUB_ENV"
-          echo "TODO_GENERATOR_IMAGE=$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-generator:$BRANCH_TAG-$GITHUB_SHA" >> "$GITHUB_ENV"
-          echo "TODO_BROADCASTER_IMAGE=$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-broadcaster:$BRANCH_TAG-$GITHUB_SHA" >> "$GITHUB_ENV"
-
-      - name: Build images
-        run: |
-          docker build --tag "$TODO_APP_IMAGE" ./todo-app
-          docker build --tag "$TODO_BACKEND_IMAGE" ./todo-backend
-          docker build --tag "$TODO_GENERATOR_IMAGE" ./todo-generator
-          docker build --tag "$TODO_BROADCASTER_IMAGE" ./broadcaster
-
-      - name: Publish images
-        run: |
-          docker push "$TODO_APP_IMAGE"
-          docker push "$TODO_BACKEND_IMAGE"
-          docker push "$TODO_GENERATOR_IMAGE"
-          docker push "$TODO_BROADCASTER_IMAGE"
+          WRITER_IMAGE="$REGISTRY/$PROJECT_ID/$REPOSITORY/log-output-writer:$GITHUB_SHA"
+          READER_IMAGE="$REGISTRY/$PROJECT_ID/$REPOSITORY/log-output-reader:$GITHUB_SHA"
+          docker build -f log-output/Dockerfile.writer -t "$WRITER_IMAGE" ./log-output
+          docker build -f log-output/Dockerfile.reader -t "$READER_IMAGE" ./log-output
+          docker push "$WRITER_IMAGE"
+          docker push "$READER_IMAGE"
+          echo "WRITER_IMAGE=$WRITER_IMAGE" >> "$GITHUB_ENV"
+          echo "READER_IMAGE=$READER_IMAGE" >> "$GITHUB_ENV"
 
       - name: Set up Kustomize
         uses: imranismail/setup-kustomize@v3
 
-      - name: Deploy branch environment
+      - name: Update desired image state in Git
         run: |
-          kubectl create namespace "$NAMESPACE" || true
-          kubectl config set-context --current --namespace="$NAMESPACE"
-          kustomize edit set namespace "$NAMESPACE"
-          kustomize edit set image PROJECT/TODO_APP="$TODO_APP_IMAGE"
-          kustomize edit set image PROJECT/TODO_BACKEND="$TODO_BACKEND_IMAGE"
-          kustomize edit set image PROJECT/TODO_GENERATOR="$TODO_GENERATOR_IMAGE"
-          kustomize edit set image PROJECT/TODO_BROADCASTER="$TODO_BROADCASTER_IMAGE"
-          kustomize build . | kubectl apply -f -
-          kubectl rollout status deployment/nats-dep --timeout=300s
-          kubectl rollout status statefulset/todo-postgres --timeout=300s
-          kubectl rollout status deployment/todo-backend-dep --timeout=300s
-          kubectl rollout status deployment/todo-app-dep --timeout=300s
-          kubectl rollout status deployment/todo-broadcaster-dep --timeout=300s
-          kubectl get pods,services -o wide
+          cd log-output
+          kustomize edit set image PROJECT/LOG_WRITER="$WRITER_IMAGE"
+          kustomize edit set image PROJECT/LOG_READER="$READER_IMAGE"
+          cd ..
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add log-output/kustomization.yaml
+          if git diff --cached --quiet; then
+            echo "No GitOps state change"
+          else
+            git commit -m "Release log-output $GITHUB_SHA [skip ci]"
+            git push origin HEAD:4.7
+          fi
+
+      - name: GitOps boundary
+        run: |
+          echo "No kubectl deployment is performed here."
+          echo "ArgoCD pulls the desired state from branch 4.7."
