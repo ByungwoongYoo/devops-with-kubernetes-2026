@@ -33,6 +33,10 @@ The course examples use `tree/<exercise>` links. Matching branch snapshots were 
 - Exercise 3.6: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.6
 - Exercise 3.7: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.7
 - Exercise 3.8: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.8
+- Exercise 3.9: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.9
+- Exercise 3.10: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.10
+- Exercise 3.11: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.11
+- Exercise 3.12: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026/tree/3.12
 
 Runtime verification status:
 
@@ -42,5 +46,5 @@ Runtime verification status:
 - Exercise 3.7: a dedicated `exercise-37-test` branch environment was deployed successfully in its own namespace.
 - Exercise 3.8: deleting `exercise-37-test` triggered the cleanup workflow and the corresponding namespace was verified deleted while the `project` namespace remained healthy.
 - Exercise 3.1: GKE cluster, PostgreSQL, ping-pong deployment, and LoadBalancer provisioning were exercised as the setup path leading into 3.2; no separate preserved final curl transcript is claimed here.
-
-Later exercises remain requirements-based unless explicitly marked runtime-verified above.
+- Exercise 3.9: README comparison is implemented in the 3.9 snapshot.
+- Exercises 3.10–3.12: repository snapshots are prepared; cloud/runtime evidence is added only after the corresponding GKE checks complete.
