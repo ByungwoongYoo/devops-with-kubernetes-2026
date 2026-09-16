@@ -1,0 +1,92 @@
+name: verify-5.6
+
+on:
+  push:
+    branches: ["5.6"]
+  workflow_dispatch:
+
+jobs:
+  verify-knative:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k3d and create Kubernetes 1.34 cluster without Traefik
+        run: |
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          k3d cluster create verify56 \
+            --port 8082:30080@agent:0 \
+            -p 8081:80@loadbalancer \
+            --agents 2 \
+            --k3s-arg '--disable=traefik@server:0' \
+            --image rancher/k3s:v1.34.1-k3s1 \
+            --wait
+          kubectl version
+          kubectl get nodes
+
+      - name: Install Knative Serving 1.23.0
+        run: |
+          kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.23.0/serving-crds.yaml
+          kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.23.0/serving-core.yaml
+          kubectl apply -f https://github.com/knative-extensions/net-kourier/releases/download/knative-v1.23.0/kourier.yaml
+          kubectl patch configmap/config-network \
+            --namespace knative-serving \
+            --type merge \
+            --patch '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}'
+          kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.23.0/serving-default-domain.yaml
+          kubectl wait --for=condition=Available deployment --all -n knative-serving --timeout=300s
+          kubectl wait --for=condition=Available deployment --all -n kourier-system --timeout=300s
+          kubectl get pods -n knative-serving
+          kubectl get pods -n kourier-system
+
+      - name: Deploy first Knative Service
+        run: |
+          kubectl apply -f serverless/hello.yaml
+          kubectl wait --for=condition=Ready ksvc/hello --timeout=240s
+          kubectl get ksvc hello
+          URL=$(kubectl get ksvc hello -o jsonpath='{.status.url}')
+          HOST=${URL#http://}
+          echo "Knative URL: $URL"
+          curl --fail --retry 20 --retry-delay 2 -H "Host: $HOST" http://127.0.0.1:8081 | tee /tmp/hello-v1.txt
+          grep -q 'Knative v1' /tmp/hello-v1.txt
+
+      - name: Verify autoscaling to zero and back up
+        run: |
+          echo 'Waiting for hello pod to scale to zero'
+          for i in $(seq 1 40); do
+            COUNT=$(kubectl get pods -l serving.knative.dev/service=hello --no-headers 2>/dev/null | wc -l)
+            echo "pod count=$COUNT"
+            if [ "$COUNT" -eq 0 ]; then break; fi
+            sleep 5
+          done
+          COUNT=$(kubectl get pods -l serving.knative.dev/service=hello --no-headers 2>/dev/null | wc -l)
+          test "$COUNT" -eq 0
+          URL=$(kubectl get ksvc hello -o jsonpath='{.status.url}')
+          HOST=${URL#http://}
+          curl --fail --retry 20 --retry-delay 2 -H "Host: $HOST" http://127.0.0.1:8081 >/tmp/wakeup.txt
+          for i in $(seq 1 24); do
+            COUNT=$(kubectl get pods -l serving.knative.dev/service=hello --no-headers 2>/dev/null | wc -l)
+            if [ "$COUNT" -ge 1 ]; then break; fi
+            sleep 5
+          done
+          test "$COUNT" -ge 1
+
+      - name: Create second revision and split traffic
+        run: |
+          kubectl apply -f serverless/hello-v2.yaml
+          kubectl wait --for=condition=Ready ksvc/hello --timeout=240s
+          kubectl apply -f serverless/hello-traffic-split.yaml
+          kubectl wait --for=condition=Ready ksvc/hello --timeout=240s
+          kubectl get ksvc hello -o yaml | sed -n '/traffic:/,$p' | head -40
+          URL=$(kubectl get ksvc hello -o jsonpath='{.status.url}')
+          HOST=${URL#http://}
+          : > /tmp/split.txt
+          for i in $(seq 1 50); do
+            curl --fail --retry 10 --retry-delay 1 -H "Host: $HOST" http://127.0.0.1:8081 >>/tmp/split.txt
+          done
+          V1=$(grep -c 'Knative v1' /tmp/split.txt || true)
+          V2=$(grep -c 'Knative v2' /tmp/split.txt || true)
+          echo "v1=$V1 v2=$V2"
+          test "$V1" -gt 0
+          test "$V2" -gt 0
