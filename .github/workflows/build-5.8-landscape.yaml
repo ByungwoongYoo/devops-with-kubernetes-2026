@@ -28,171 +28,23 @@ jobs:
 
       - name: Download and render the CNCF landscape
         run: |
-          mkdir -p docs
+          mkdir -p docs /tmp/landscape-artifact
           curl --fail --insecure --location --retry 5 --retry-delay 2 \
             https://landscapeapp.cncf.io/cncf/images/landscape.pdf \
             -o /tmp/landscape.pdf
-          file /tmp/landscape.pdf
           head -c 5 /tmp/landscape.pdf | grep -q '%PDF-'
           pdftoppm -f 1 -singlefile -png -r 170 /tmp/landscape.pdf /tmp/landscape
-          pdftotext -f 1 -l 1 -bbox-layout /tmp/landscape.pdf /tmp/landscape-bbox.html
-          pdftotext -f 1 -l 1 -layout /tmp/landscape.pdf /tmp/landscape.txt
-          echo '=== selected labels visible in embedded PDF text ==='
-          grep -iE 'Kubernetes|Helm|Prometheus|Grafana|Argo|Istio|Knative|containerd|CoreDNS|Flannel|K3s|NGINX|Traefik|Docker' /tmp/landscape.txt | head -100 || true
+          cp /tmp/landscape.png /tmp/landscape-artifact/landscape.png
           file /tmp/landscape.png
 
-      - name: Circle directly and indirectly used projects
+      - name: Upload official landscape source
+        uses: actions/upload-artifact@v4
+        with:
+          name: cncflandscape-source
+          path: /tmp/landscape-artifact/landscape.png
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Placeholder until audited coordinates are committed
         run: |
-          cat > /tmp/annotate.py <<'PY'
-          from PIL import Image, ImageDraw, ImageFont
-          import re
-          import xml.etree.ElementTree as ET
-
-          source = '/tmp/landscape.png'
-          bbox_source = '/tmp/landscape-bbox.html'
-          out = 'docs/cncf-landscape-used.png'
-          report_path = 'docs/cncf-landscape-detection.txt'
-
-          direct = {
-              'Kubernetes': ['kubernetes'],
-              'Helm': ['helm'],
-              'Prometheus': ['prometheus'],
-              'Grafana': ['grafana'],
-              'Argo CD': ['argo cd', 'argo'],
-              'Istio': ['istio'],
-              'Knative': ['knative'],
-              'NGINX': ['nginx'],
-              'Traefik': ['traefik'],
-              'Docker': ['docker'],
-          }
-          indirect = {
-              'K3s': ['k3s'],
-              'Flannel': ['flannel'],
-              'CoreDNS': ['coredns', 'core dns'],
-              'containerd': ['containerd'],
-          }
-
-          def norm(s):
-              return re.sub(r'[^a-z0-9]+', ' ', s.lower()).strip()
-
-          tree = ET.parse(bbox_source)
-          root = tree.getroot()
-          page = next(el for el in root.iter() if el.tag.endswith('page'))
-          page_w = float(page.attrib['width'])
-          page_h = float(page.attrib['height'])
-
-          # Reconstruct every PDF text line from its word boxes. Embedded PDF text
-          # gives substantially more reliable positions than OCR for tiny logos.
-          candidates = []
-          for line in root.iter():
-              if not line.tag.endswith('line'):
-                  continue
-              words = [w for w in line.iter() if w.tag.endswith('word') and (w.text or '').strip()]
-              if not words:
-                  continue
-              text = ' '.join((w.text or '').strip() for w in words)
-              x0 = min(float(w.attrib['xMin']) for w in words)
-              y0 = min(float(w.attrib['yMin']) for w in words)
-              x1 = max(float(w.attrib['xMax']) for w in words)
-              y1 = max(float(w.attrib['yMax']) for w in words)
-              candidates.append((text, x0, y0, x1-x0, y1-y0, 'pdf-line'))
-              for w in words:
-                  candidates.append(((w.text or '').strip(), float(w.attrib['xMin']), float(w.attrib['yMin']), float(w.attrib['xMax'])-float(w.attrib['xMin']), float(w.attrib['yMax'])-float(w.attrib['yMin']), 'pdf-word'))
-
-          img = Image.open(source).convert('RGB')
-          W, H = img.size
-          sx, sy = W / page_w, H / page_h
-
-          def find_target(aliases):
-              hits = []
-              for rec in candidates:
-                  t = norm(rec[0])
-                  for alias in map(norm, aliases):
-                      if t == alias or (len(alias) >= 4 and alias in t):
-                          exact = 1000 if t == alias else 0
-                          # Smaller boxes are more likely to be the actual project label.
-                          score = exact - rec[3] * rec[4] * 0.01
-                          hits.append((score, rec))
-              if not hits:
-                  return None
-              return max(hits, key=lambda z: z[0])[1]
-
-          draw = ImageDraw.Draw(img)
-          green = (0, 150, 70)
-          orange = (240, 130, 0)
-          lw = max(5, W // 900)
-          report, missing = [], []
-
-          def mark(name, aliases, color, mode):
-              rec = find_target(aliases)
-              if rec is None:
-                  missing.append(name)
-                  report.append(f'MISSING\t{mode}\t{name}')
-                  return
-              text, px, py, pw, ph, source_kind = rec
-              x, y, w, h = px*sx, py*sy, pw*sx, ph*sy
-              # Project logos in the static landscape are positioned immediately above
-              # their labels. Enclose the label and the logo block in one visible oval.
-              pad_x = max(20, w * 0.65)
-              above = max(38, h * 5.2)
-              below = max(12, h * 0.9)
-              box = (
-                  int(max(0, x-pad_x)), int(max(0, y-above)),
-                  int(min(W, x+w+pad_x)), int(min(H, y+h+below)),
-              )
-              draw.ellipse(box, outline=color, width=lw)
-              report.append(f'FOUND\t{mode}\t{name}\ttext={text!r}\tbox={box}\tsource={source_kind}')
-
-          for name, aliases in direct.items():
-              mark(name, aliases, green, 'DIRECT')
-          for name, aliases in indirect.items():
-              mark(name, aliases, orange, 'INDIRECT')
-
-          legend_h = max(90, H // 35)
-          canvas = Image.new('RGB', (W, H + legend_h), 'white')
-          canvas.paste(img, (0, 0))
-          d = ImageDraw.Draw(canvas)
-          font = ImageFont.load_default()
-          y = H + legend_h // 2
-          r = max(10, W // 420)
-          x = max(30, W // 100)
-          d.ellipse((x-r, y-r, x+r, y+r), outline=green, width=max(3, lw//2))
-          d.text((x+2*r, y-r), 'GREEN = directly used in the course', fill='black', font=font)
-          x2 = W // 2
-          d.ellipse((x2-r, y-r, x2+r, y+r), outline=orange, width=max(3, lw//2))
-          d.text((x2+2*r, y-r), 'ORANGE = indirect dependency', fill='black', font=font)
-          canvas.save(out, optimize=True)
-
-          with open(report_path, 'w', encoding='utf-8') as f:
-              f.write('Source: CNCF static landscape PDF\n')
-              f.write('https://landscapeapp.cncf.io/cncf/images/landscape.pdf\n')
-              f.write(f'Rendered size: {W}x{H}; PDF page: {page_w}x{page_h}\n')
-              f.write('\n'.join(report) + '\n')
-              if missing:
-                  f.write('Labels not present/found in this landscape edition: ' + ', '.join(missing) + '\n')
-
-          # These are the core directly-used CNCF projects that must be visible for a
-          # meaningful submission. Other direct/indirect items can legitimately be
-          # absent from a particular landscape edition and are documented in the list.
-          core = {'Kubernetes', 'Helm', 'Prometheus', 'Istio', 'Knative'}
-          core_missing = core.intersection(missing)
-          if core_missing:
-              raise SystemExit('Core project labels not found in PDF text: ' + ', '.join(sorted(core_missing)))
-
-          print('\n'.join(report))
-          print('Missing optional labels:', missing)
-          PY
-          python /tmp/annotate.py
-          ls -lh docs/cncf-landscape-used.png docs/cncf-landscape-detection.txt
-
-      - name: Commit submission image to branch 5.8
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/cncf-landscape-used.png docs/cncf-landscape-detection.txt
-          if git diff --cached --quiet; then
-            echo 'No image changes to commit'
-          else
-            git commit -m 'Exercise 5.8: add annotated CNCF landscape image [skip ci]'
-            git push origin HEAD:5.8
-          fi
+          echo 'Official source image rendered and uploaded for coordinate audit.'
