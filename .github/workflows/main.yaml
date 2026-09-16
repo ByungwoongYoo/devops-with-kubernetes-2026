@@ -30,6 +30,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
@@ -78,7 +80,9 @@ jobs:
             echo "No desired-state change"
           else
             git commit -m "Release project $GITHUB_SHA [skip ci]"
-            git push origin HEAD:${GITHUB_REF_NAME}
+            git fetch origin "$GITHUB_REF_NAME"
+            git rebase "origin/$GITHUB_REF_NAME"
+            git push origin "HEAD:$GITHUB_REF_NAME"
           fi
 
       - name: GitOps boundary
