@@ -15,10 +15,23 @@ spec:
     spec:
       containers:
         - name: ping-pong
-          image: dwk-ping-pong:2.1
+          image: dwk-ping-pong:2.7
           imagePullPolicy: IfNotPresent
           env:
             - name: PORT
               value: "3000"
+            - name: DATABASE_HOST
+              value: postgres-ping-pong-svc
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: pingpong
+            - name: DATABASE_USER
+              value: postgres
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ping-pong-postgres-secret
+                  key: POSTGRES_PASSWORD
           ports:
             - containerPort: 3000
