@@ -2,10 +2,25 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 
-const port = Number(process.env.PORT || 3000);
-const imagePath = process.env.IMAGE_FILE || '/usr/src/app/files/image.jpg';
-const cacheTtlMs = Number(process.env.IMAGE_CACHE_TTL_MS || 600000);
-const todoBackendUrl = process.env.TODO_BACKEND_URL || 'http://todo-backend-svc:2345';
+function required(name) {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing required environment variable ${name}`);
+  return value;
+}
+
+function requiredNumber(name) {
+  const value = Number(required(name));
+  if (!Number.isFinite(value)) throw new Error(`Environment variable ${name} must be numeric`);
+  return value;
+}
+
+const port = requiredNumber('PORT');
+const imagePath = required('IMAGE_FILE');
+const cacheTtlMs = requiredNumber('IMAGE_CACHE_TTL_MS');
+const todoBackendUrl = required('TODO_BACKEND_URL').replace(/\/+$/, '');
+const picsumUrl = required('PICSUM_URL');
+const maxTodoLength = requiredNumber('MAX_TODO_LENGTH');
+const requestBodyLimit = requiredNumber('REQUEST_BODY_LIMIT_BYTES');
 
 fs.mkdirSync(path.dirname(imagePath), { recursive: true });
 
@@ -19,8 +34,8 @@ async function ensureImage() {
   }
 
   if (!fresh) {
-    const response = await fetch('https://picsum.photos/1200');
-    if (!response.ok) throw new Error(`Picsum returned ${response.status}`);
+    const response = await fetch(picsumUrl);
+    if (!response.ok) throw new Error(`Image service returned ${response.status}`);
     const bytes = Buffer.from(await response.arrayBuffer());
     fs.writeFileSync(imagePath, bytes);
   }
@@ -67,7 +82,7 @@ function page(todos) {
     <h1>Todo app</h1>
     <img src="/image" alt="Random cached image" style="display:block;width:100%;max-height:420px;object-fit:cover;margin-bottom:24px" />
     <form action="/todos" method="post" style="display:flex;gap:8px;margin-bottom:20px">
-      <input id="todo" name="content" type="text" maxlength="140" required placeholder="Write a todo (max 140 characters)" style="flex:1;padding:10px" />
+      <input id="todo" name="content" type="text" maxlength="${maxTodoLength}" required placeholder="Write a todo (max ${maxTodoLength} characters)" style="flex:1;padding:10px" />
       <button type="submit">Send</button>
     </form>
     <h2>Todos</h2>
@@ -84,7 +99,7 @@ function readBody(req) {
     let body = '';
     req.on('data', (chunk) => {
       body += chunk;
-      if (body.length > 10_000) {
+      if (body.length > requestBodyLimit) {
         reject(new Error('Request body too large'));
         req.destroy();
       }
@@ -111,9 +126,9 @@ const server = http.createServer(async (req, res) => {
     try {
       const params = new URLSearchParams(await readBody(req));
       const content = (params.get('content') || '').trim();
-      if (!content || content.length > 140) {
+      if (!content || content.length > maxTodoLength) {
         res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end('Todo must contain 1-140 characters\n');
+        res.end(`Todo must contain 1-${maxTodoLength} characters\n`);
         return;
       }
       await createTodo(content);
