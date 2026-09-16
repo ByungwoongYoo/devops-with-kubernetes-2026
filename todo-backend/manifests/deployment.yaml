@@ -15,10 +15,23 @@ spec:
     spec:
       containers:
         - name: todo-backend
-          image: dwk-todo-backend:2.2
+          image: dwk-todo-backend:2.6
           imagePullPolicy: IfNotPresent
           env:
             - name: PORT
-              value: "3000"
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: TODO_BACKEND_PORT
+            - name: MAX_TODO_LENGTH
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: MAX_TODO_LENGTH
+            - name: REQUEST_BODY_LIMIT_BYTES
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: REQUEST_BODY_LIMIT_BYTES
           ports:
             - containerPort: 3000
