@@ -34,6 +34,18 @@ async function readPongCount() {
 }
 
 const server = http.createServer(async (req, res) => {
+  if (req.method === 'GET' && req.url === '/healthz') {
+    try {
+      await readPongCount();
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('ok\n');
+    } catch (err) {
+      res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(`Ping-pong unavailable: ${err.message}\n`);
+    }
+    return;
+  }
+
   if (req.method === 'GET' && req.url === '/') {
     const status = readStatus();
     const information = readInformation();
