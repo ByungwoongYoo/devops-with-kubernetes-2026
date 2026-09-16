@@ -19,17 +19,44 @@ spec:
             claimName: todo-image-claim
       containers:
         - name: todo-app
-          image: dwk-todo-app:2.2
+          image: dwk-todo-app:2.6
           imagePullPolicy: IfNotPresent
           env:
             - name: PORT
-              value: "3000"
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: TODO_APP_PORT
             - name: IMAGE_FILE
-              value: /usr/src/app/files/image.jpg
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: IMAGE_FILE
             - name: IMAGE_CACHE_TTL_MS
-              value: "600000"
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: IMAGE_CACHE_TTL_MS
             - name: TODO_BACKEND_URL
-              value: http://todo-backend-svc:2345
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: TODO_BACKEND_URL
+            - name: PICSUM_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: PICSUM_URL
+            - name: MAX_TODO_LENGTH
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: MAX_TODO_LENGTH
+            - name: REQUEST_BODY_LIMIT_BYTES
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: REQUEST_BODY_LIMIT_BYTES
           ports:
             - containerPort: 3000
           volumeMounts:
