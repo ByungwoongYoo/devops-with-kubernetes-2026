@@ -22,6 +22,3 @@ images:
   - name: PROJECT/TODO_GENERATOR
     newName: asia-northeast3-docker.pkg.dev/dwk-gke-508806/dwk/todo-generator
     newTag: "3.5"
-  - name: PROJECT/TODO_BACKUP
-    newName: asia-northeast3-docker.pkg.dev/dwk-gke-508806/dwk/todo-backup
-    newTag: "3.10"
