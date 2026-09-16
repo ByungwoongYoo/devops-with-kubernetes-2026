@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: todo-backend
-          image: dwk-todo-backend:2.10
+          image: PROJECT/TODO_BACKEND
           imagePullPolicy: IfNotPresent
           env:
             - name: PORT
