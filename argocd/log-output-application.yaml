@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: log-output
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ByungwoongYoo/devops-with-kubernetes-2026.git
+    targetRevision: "4.7"
+    path: log-output
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: exercises
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
