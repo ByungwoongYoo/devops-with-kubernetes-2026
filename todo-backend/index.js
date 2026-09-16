@@ -66,13 +66,17 @@ async function initializeDatabase() {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS todos (
           id SERIAL PRIMARY KEY,
-          content TEXT NOT NULL
+          content TEXT NOT NULL,
+          done BOOLEAN NOT NULL DEFAULT FALSE
         )
       `);
+      await pool.query(
+        'ALTER TABLE todos ADD COLUMN IF NOT EXISTS done BOOLEAN NOT NULL DEFAULT FALSE'
+      );
       const result = await pool.query('SELECT COUNT(*)::int AS count FROM todos');
       if (result.rows[0].count === 0) {
         await pool.query(
-          'INSERT INTO todos (content) VALUES ($1), ($2), ($3)',
+          'INSERT INTO todos (content, done) VALUES ($1, FALSE), ($2, FALSE), ($3, FALSE)',
           ['Learn Kubernetes', 'Build the todo application', 'Deploy it with Kubernetes']
         );
       }
@@ -115,7 +119,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && req.url === '/todos') {
-      const result = await pool.query('SELECT id, content FROM todos ORDER BY id');
+      const result = await pool.query('SELECT id, content, done FROM todos ORDER BY id');
       sendJson(res, 200, result.rows);
       return;
     }
@@ -167,7 +171,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       const result = await pool.query(
-        'INSERT INTO todos (content) VALUES ($1) RETURNING id, content',
+        'INSERT INTO todos (content, done) VALUES ($1, FALSE) RETURNING id, content, done',
         [content]
       );
 
@@ -177,6 +181,27 @@ const server = http.createServer(async (req, res) => {
         length: result.rows[0].content.length,
       });
       sendJson(res, 201, result.rows[0]);
+      return;
+    }
+
+    const todoMatch = req.url.match(/^\/todos\/(\d+)$/);
+    if (req.method === 'PUT' && todoMatch) {
+      const id = Number(todoMatch[1]);
+      const result = await pool.query(
+        'UPDATE todos SET done = TRUE WHERE id = $1 RETURNING id, content, done',
+        [id]
+      );
+
+      if (result.rowCount === 0) {
+        sendJson(res, 404, { error: 'Todo not found' });
+        return;
+      }
+
+      logTodo('todo_completed', {
+        id: result.rows[0].id,
+        content: result.rows[0].content,
+      });
+      sendJson(res, 200, result.rows[0]);
       return;
     }
 
