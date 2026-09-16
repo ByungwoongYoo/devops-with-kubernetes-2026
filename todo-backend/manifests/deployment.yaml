@@ -65,6 +65,16 @@ spec:
                 secretKeyRef:
                   name: project-postgres-secret
                   key: POSTGRES_PASSWORD
+            - name: NATS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: NATS_URL
+            - name: NATS_SUBJECT
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: NATS_SUBJECT
           ports:
             - containerPort: 3000
           startupProbe:
