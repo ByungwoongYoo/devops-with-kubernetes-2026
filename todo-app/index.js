@@ -68,6 +68,17 @@ async function createTodo(content) {
   }
 }
 
+async function completeTodo(id) {
+  const response = await fetch(`${todoBackendUrl}/todos/${id}`, {
+    method: 'PUT',
+  });
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message.trim() || `Todo backend returned ${response.status}`);
+  }
+  return response.json();
+}
+
 async function breakBackend() {
   const response = await fetch(`${todoBackendUrl}/break`, { method: 'POST' });
   if (!response.ok) {
@@ -77,7 +88,14 @@ async function breakBackend() {
 }
 
 function page(todos) {
-  const items = todos.map((todo) => `<li>${escapeHtml(todo.content)}</li>`).join('\n      ');
+  const items = todos.map((todo) => {
+    const content = escapeHtml(todo.content);
+    if (todo.done) {
+      return `<li style="margin-bottom:8px"><s>${content}</s> <strong>Done</strong></li>`;
+    }
+    return `<li style="margin-bottom:8px">${content} <button type="button" onclick="markDone(${todo.id})">Done</button></li>`;
+  }).join('\n      ');
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -101,6 +119,17 @@ function page(todos) {
       ${items}
     </ul>
   </main>
+  <script>
+    async function markDone(id) {
+      const response = await fetch('/todos/' + id, { method: 'PUT' });
+      if (!response.ok) {
+        const message = await response.text();
+        alert(message || 'Could not mark todo done');
+        return;
+      }
+      window.location.reload();
+    }
+  </script>
 </body>
 </html>`;
 }
@@ -148,6 +177,20 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end(`Could not create todo: ${err.message}\n`);
+    }
+    return;
+  }
+
+  const todoMatch = req.url.match(/^\/todos\/(\d+)$/);
+  if (req.method === 'PUT' && todoMatch) {
+    try {
+      const id = Number(todoMatch[1]);
+      const updated = await completeTodo(id);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(`${JSON.stringify(updated)}\n`);
+    } catch (err) {
+      res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(`Could not update todo: ${err.message}\n`);
     }
     return;
   }
