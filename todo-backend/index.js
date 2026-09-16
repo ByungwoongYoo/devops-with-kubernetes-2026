@@ -1,5 +1,6 @@
 const http = require('http');
 const { Pool } = require('pg');
+const { connect, JSONCodec } = require('nats');
 
 function required(name) {
   const value = process.env[name];
@@ -16,6 +17,10 @@ function requiredNumber(name) {
 const port = requiredNumber('PORT');
 const maxTodoLength = requiredNumber('MAX_TODO_LENGTH');
 const requestBodyLimit = requiredNumber('REQUEST_BODY_LIMIT_BYTES');
+const natsUrl = required('NATS_URL');
+const natsSubject = required('NATS_SUBJECT');
+const natsCodec = JSONCodec();
+
 const pool = new Pool({
   host: required('DATABASE_HOST'),
   port: requiredNumber('DATABASE_PORT'),
@@ -25,6 +30,7 @@ const pool = new Pool({
 });
 
 let isHealthy = true;
+let natsConnection = null;
 
 function logTodo(event, details = {}) {
   console.log(JSON.stringify({
@@ -90,6 +96,57 @@ async function initializeDatabase() {
   throw lastError;
 }
 
+async function initializeNats() {
+  let lastError;
+  for (let attempt = 1; attempt <= 30; attempt += 1) {
+    try {
+      natsConnection = await connect({
+        servers: natsUrl,
+        name: 'todo-backend',
+      });
+      console.log(`Connected to NATS at ${natsUrl}`);
+      return;
+    } catch (error) {
+      lastError = error;
+      console.log(`NATS not ready (attempt ${attempt}/30): ${error.message}`);
+      await delay(2000);
+    }
+  }
+  throw lastError;
+}
+
+async function publishTodoEvent(type, todo) {
+  if (!natsConnection) {
+    logTodo('todo_event_skipped', { reason: 'nats_not_connected', type, id: todo.id });
+    return;
+  }
+
+  const message = type === 'created'
+    ? `Todo created: ${todo.content}`
+    : `Todo completed: ${todo.content}`;
+
+  const event = {
+    type,
+    todo,
+    message,
+    timestamp: new Date().toISOString(),
+  };
+
+  try {
+    natsConnection.publish(natsSubject, natsCodec.encode(event));
+    await natsConnection.flush();
+    logTodo('todo_event_published', { type, id: todo.id });
+  } catch (error) {
+    // Do not retry the publish here: the exercise prefers an occasional
+    // missing notification over the possibility of a duplicate.
+    logTodo('todo_event_publish_failed', {
+      type,
+      id: todo.id,
+      error: error.message,
+    });
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && req.url === '/healthz') {
@@ -102,8 +159,8 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && req.url === '/readyz') {
-      if (!isHealthy) {
-        sendJson(res, 500, { status: 'unhealthy' });
+      if (!isHealthy || !natsConnection) {
+        sendJson(res, 500, { status: 'not-ready' });
         return;
       }
       await pool.query('SELECT 1');
@@ -175,12 +232,14 @@ const server = http.createServer(async (req, res) => {
         [content]
       );
 
+      const todo = result.rows[0];
       logTodo('todo_created', {
-        id: result.rows[0].id,
-        content: result.rows[0].content,
-        length: result.rows[0].content.length,
+        id: todo.id,
+        content: todo.content,
+        length: todo.content.length,
       });
-      sendJson(res, 201, result.rows[0]);
+      await publishTodoEvent('created', todo);
+      sendJson(res, 201, todo);
       return;
     }
 
@@ -197,11 +256,13 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
+      const todo = result.rows[0];
       logTodo('todo_completed', {
-        id: result.rows[0].id,
-        content: result.rows[0].content,
+        id: todo.id,
+        content: todo.content,
       });
-      sendJson(res, 200, result.rows[0]);
+      await publishTodoEvent('completed', todo);
+      sendJson(res, 200, todo);
       return;
     }
 
@@ -214,6 +275,7 @@ const server = http.createServer(async (req, res) => {
 
 async function main() {
   await initializeDatabase();
+  await initializeNats();
   server.listen(port, '0.0.0.0', () => {
     console.log(`Todo backend started in port ${port}`);
   });
