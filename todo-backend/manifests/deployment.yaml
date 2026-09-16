@@ -67,3 +67,24 @@ spec:
                   key: POSTGRES_PASSWORD
           ports:
             - containerPort: 3000
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 35
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 3000
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 1
