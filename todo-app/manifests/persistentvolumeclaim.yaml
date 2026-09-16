@@ -4,7 +4,6 @@ metadata:
   name: todo-image-claim
   namespace: project
 spec:
-  storageClassName: dwk-todo-image-local
   accessModes:
     - ReadWriteOnce
   resources:
