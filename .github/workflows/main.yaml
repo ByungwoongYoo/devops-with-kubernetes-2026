@@ -1,18 +1,11 @@
-name: GitOps release project
+name: GitOps release project environments
 
 on:
   push:
     branches:
       - main
-      - "4.8"
-    paths:
-      - "todo-app/**"
-      - "todo-backend/**"
-      - "todo-generator/**"
-      - "broadcaster/**"
-      - "nats/**"
-      - "kustomization.yaml"
-      - ".github/workflows/main.yaml"
+    tags:
+      - "*"
 
 permissions:
   contents: write
@@ -28,8 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: GKE_PROJECT
     steps:
-      - name: Checkout
+      - name: Checkout triggering revision
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
@@ -65,23 +60,48 @@ jobs:
       - name: Set up Kustomize
         uses: imranismail/setup-kustomize@v3
 
-      - name: Commit desired state for ArgoCD
+      - name: Select staging or production desired state
+        shell: bash
         run: |
+          if [[ "$GITHUB_REF" == refs/heads/main ]]; then
+            echo "OVERLAY=overlays/staging" >> "$GITHUB_ENV"
+            echo "RELEASE_KIND=staging" >> "$GITHUB_ENV"
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "OVERLAY=overlays/production" >> "$GITHUB_ENV"
+            echo "RELEASE_KIND=production" >> "$GITHUB_ENV"
+          else
+            echo "Unexpected ref: $GITHUB_REF"
+            exit 1
+          fi
+
+      - name: Update desired state on main
+        run: |
+          # A tagged build is produced from the tagged commit, but the desired
+          # production state is committed to main where ArgoCD watches it.
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            git fetch origin main
+            git checkout -B main origin/main
+          fi
+
+          cd "$OVERLAY"
           kustomize edit set image PROJECT/TODO_APP="$TODO_APP_IMAGE"
           kustomize edit set image PROJECT/TODO_BACKEND="$TODO_BACKEND_IMAGE"
           kustomize edit set image PROJECT/TODO_GENERATOR="$TODO_GENERATOR_IMAGE"
           kustomize edit set image PROJECT/TODO_BROADCASTER="$TODO_BROADCASTER_IMAGE"
+          cd ../..
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add kustomization.yaml
+          git add "$OVERLAY/kustomization.yaml"
           if git diff --cached --quiet; then
             echo "No desired-state change"
           else
-            git commit -m "Release project $GITHUB_SHA [skip ci]"
-            git push origin HEAD:${GITHUB_REF_NAME}
+            git commit -m "Release $RELEASE_KIND $GITHUB_SHA [skip ci]"
+            git push origin HEAD:main
           fi
 
       - name: GitOps boundary
         run: |
-          echo "CI builds and publishes images and changes Git only."
-          echo "ArgoCD performs the Kubernetes deployment by pulling desired state."
+          echo "main commit -> staging overlay"
+          echo "tagged commit -> production overlay"
+          echo "CI never runs kubectl apply; ArgoCD pulls both environments."
