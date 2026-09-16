@@ -31,9 +31,6 @@ jobs:
           kubectl patch configmap/config-network \
             -n knative-serving --type merge \
             -p '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}'
-          # The exercise image is built locally and imported to k3d rather than pushed
-          # to Docker Hub. Tell Knative not to resolve Docker Hub tags remotely so the
-          # node can use the locally imported image with imagePullPolicy IfNotPresent.
           kubectl patch configmap/config-deployment \
             -n knative-serving --type merge \
             -p '{"data":{"registries-skipping-tag-resolving":"index.docker.io,docker.io"}}'
@@ -92,7 +89,14 @@ jobs:
           kubectl apply -f log-output/manifests/deployment.yaml
           kubectl rollout status deployment/log-output-dep -n exercises --timeout=180s
           kubectl get deployment/log-output-dep -n exercises -o yaml | grep -F 'http://pingpong.exercises.svc.cluster.local/pings'
-          kubectl exec -n exercises curltest -- curl -fsS http://log-output-svc/ | tee /tmp/log.txt
+          kubectl get endpoints log-output-svc -n exercises -o wide
+          for i in $(seq 1 30); do
+            if kubectl exec -n exercises curltest -- curl -fsS http://log-output-svc/ >/tmp/log.txt; then
+              break
+            fi
+            sleep 2
+          done
+          cat /tmp/log.txt
           grep -q 'Ping / Pongs: 2' /tmp/log.txt
 
       - name: Verify scale-to-zero remains available through Knative
