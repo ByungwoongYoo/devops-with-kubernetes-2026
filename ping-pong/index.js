@@ -1,26 +1,19 @@
-const fs = require('fs');
 const http = require('http');
-const path = require('path');
 
 const port = Number(process.env.PORT || 3000);
-const counterFile = process.env.COUNTER_FILE || '/usr/src/app/files/ping-pong.txt';
-
-fs.mkdirSync(path.dirname(counterFile), { recursive: true });
-if (!fs.existsSync(counterFile)) {
-  fs.writeFileSync(counterFile, '0\n', 'utf8');
-}
-
-function readCount() {
-  const value = Number.parseInt(fs.readFileSync(counterFile, 'utf8').trim(), 10);
-  return Number.isFinite(value) ? value : 0;
-}
+let counter = 0;
 
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/pingpong') {
-    const count = readCount();
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end(`pong ${count}\n`);
-    fs.writeFileSync(counterFile, `${count + 1}\n`, 'utf8');
+    res.end(`pong ${counter}\n`);
+    counter += 1;
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/pings') {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end(`${counter}\n`);
     return;
   }
 
