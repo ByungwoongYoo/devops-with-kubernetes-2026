@@ -1,0 +1,184 @@
+name: build-5.8-landscape
+
+on:
+  push:
+    branches: ["5.8"]
+    paths-ignore:
+      - 'docs/cncf-landscape-used.png'
+      - 'docs/cncf-landscape-detection.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  annotate-landscape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 5.8
+
+      - name: Install image/OCR dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr
+          python -m pip install --quiet pillow pytesseract
+
+      - name: Download the CNCF landscape PNG
+        run: |
+          mkdir -p docs
+          curl --fail --location --retry 5 --retry-delay 2 \
+            https://landscape.cncf.io/images/landscape.png \
+            -o /tmp/landscape.png
+          file /tmp/landscape.png
+
+      - name: Circle directly and indirectly used projects
+        run: |
+          cat > /tmp/annotate.py <<'PY'
+          from PIL import Image, ImageDraw, ImageFont
+          import pytesseract, re, os
+          from pytesseract import Output
+
+          source = '/tmp/landscape.png'
+          out = 'docs/cncf-landscape-used.png'
+          report_path = 'docs/cncf-landscape-detection.txt'
+          img = Image.open(source).convert('RGB')
+          data = pytesseract.image_to_data(img, output_type=Output.DICT, config='--psm 11')
+
+          direct = {
+              'Kubernetes': ['kubernetes'],
+              'Docker': ['docker'],
+              'Helm': ['helm'],
+              'Prometheus': ['prometheus'],
+              'Grafana': ['grafana'],
+              'Argo CD': ['argo cd', 'argocd'],
+              'Istio': ['istio'],
+              'Knative': ['knative'],
+              'NGINX': ['nginx'],
+              'Traefik': ['traefik'],
+              'GitHub Actions': ['github actions'],
+              'Google Kubernetes Engine': ['google kubernetes engine', 'gke'],
+          }
+          indirect = {
+              'K3s': ['k3s'],
+              'Flannel': ['flannel'],
+              'CoreDNS': ['coredns', 'core dns'],
+              'containerd': ['containerd'],
+          }
+
+          def norm(s):
+              return re.sub(r'[^a-z0-9]+', ' ', s.lower()).strip()
+
+          # Build OCR lines with geometry, then also individual-word records.
+          lines = {}
+          words = []
+          n = len(data['text'])
+          for i in range(n):
+              text = data['text'][i].strip()
+              if not text:
+                  continue
+              try: conf = float(data['conf'][i])
+              except: conf = -1
+              if conf < 15:
+                  continue
+              x, y, w, h = [int(data[k][i]) for k in ('left','top','width','height')]
+              key = (data['block_num'][i], data['par_num'][i], data['line_num'][i])
+              lines.setdefault(key, []).append((i, text, x, y, w, h, conf))
+              words.append((text, x, y, w, h, conf))
+
+          candidates = []
+          for key, items in lines.items():
+              items = sorted(items, key=lambda z:z[2])
+              text = ' '.join(z[1] for z in items)
+              x0 = min(z[2] for z in items); y0=min(z[3] for z in items)
+              x1 = max(z[2]+z[4] for z in items); y1=max(z[3]+z[5] for z in items)
+              candidates.append((text, x0,y0,x1-x0,y1-y0, sum(z[6] for z in items)/len(items)))
+          candidates += words
+
+          def find_target(aliases):
+              aliases = [norm(a) for a in aliases]
+              hits=[]
+              for rec in candidates:
+                  t=norm(rec[0])
+                  for a in aliases:
+                      if not a: continue
+                      if t == a or a in t:
+                          # Prefer exact/smaller OCR regions and stronger confidence.
+                          score = (1000 if t==a else 0) + rec[5] - 0.002*(rec[3]*rec[4])
+                          hits.append((score,rec))
+              if not hits:
+                  return None
+              hits.sort(key=lambda z:z[0], reverse=True)
+              return hits[0][1]
+
+          draw=ImageDraw.Draw(img)
+          W,H=img.size
+          green=(0,150,70)
+          orange=(240,130,0)
+          # line width scales with poster resolution
+          lw=max(8, W//700)
+          report=[]
+          missing=[]
+
+          def mark(name, aliases, color, mode):
+              rec=find_target(aliases)
+              if rec is None:
+                  missing.append(name)
+                  report.append(f'MISSING\t{mode}\t{name}')
+                  return
+              text,x,y,w,h,conf=rec
+              # CNCF landscape cards place the logo immediately above/around the label.
+              pad_x=max(35, int(w*0.65))
+              above=max(60, int(h*5.0))
+              below=max(18, int(h*1.0))
+              left=max(0,x-pad_x); right=min(W,x+w+pad_x)
+              top=max(0,y-above); bottom=min(H,y+h+below)
+              draw.ellipse((left,top,right,bottom), outline=color, width=lw)
+              report.append(f'FOUND\t{mode}\t{name}\tocr={text!r}\tbox={left},{top},{right},{bottom}\tconf={conf:.1f}')
+
+          for name,aliases in direct.items(): mark(name,aliases,green,'DIRECT')
+          for name,aliases in indirect.items(): mark(name,aliases,orange,'INDIRECT')
+
+          # Add an explicit legend without obscuring the landscape.
+          legend_h=max(100, H//35)
+          canvas=Image.new('RGB',(W,H+legend_h),'white')
+          canvas.paste(img,(0,0))
+          d=ImageDraw.Draw(canvas)
+          font=ImageFont.load_default(size=max(18,W//220)) if hasattr(ImageFont,'load_default') else None
+          y=H+legend_h//2
+          r=max(12,W//350)
+          x=max(40,W//100)
+          d.ellipse((x-r,y-r,x+r,y+r),outline=green,width=max(5,lw//2))
+          d.text((x+2*r,y-r), 'GREEN = directly used in the course/repository', fill='black', font=font)
+          x2=W//2
+          d.ellipse((x2-r,y-r,x2+r,y+r),outline=orange,width=max(5,lw//2))
+          d.text((x2+2*r,y-r), 'ORANGE = indirect dependency of the k3d/k3s stack', fill='black', font=font)
+          canvas.save(out, optimize=True)
+          with open(report_path,'w',encoding='utf-8') as f:
+              f.write(f'Source: https://landscape.cncf.io/images/landscape.png\nSize: {W}x{H}\n')
+              f.write('\n'.join(report)+'\n')
+              if missing: f.write('Missing OCR labels: '+', '.join(missing)+'\n')
+          # Do not silently claim success if core course technologies were not found.
+          core={'Kubernetes','Helm','Prometheus','Argo CD','Istio','Knative','K3s','containerd'}
+          core_missing=core.intersection(missing)
+          if core_missing:
+              raise SystemExit('Core logos not located by OCR: '+', '.join(sorted(core_missing)))
+          print('\n'.join(report))
+          print('Missing non-core labels:', missing)
+          PY
+          python /tmp/annotate.py
+          ls -lh docs/cncf-landscape-used.png docs/cncf-landscape-detection.txt
+
+      - name: Commit submission image to branch 5.8
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/cncf-landscape-used.png docs/cncf-landscape-detection.txt
+          if git diff --cached --quiet; then
+            echo 'No image changes to commit'
+          else
+            git commit -m 'Exercise 5.8: add annotated CNCF landscape image [skip ci]'
+            git push origin HEAD:5.8
+          fi
