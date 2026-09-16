@@ -61,18 +61,22 @@ async function incrementAndGetPreviousCount() {
   return Number(result.rows[0].previous);
 }
 
+async function respondWithPong(res) {
+  const previous = await incrementAndGetPreviousCount();
+  res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+  res.end(`pong ${previous}\n`);
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && req.url === '/') {
-      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('ok\n');
+      await respondWithPong(res);
       return;
     }
 
+    // Kept for backwards compatibility; Gateway API rewrites /pingpong to /.
     if (req.method === 'GET' && req.url === '/pingpong') {
-      const previous = await incrementAndGetPreviousCount();
-      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end(`pong ${previous}\n`);
+      await respondWithPong(res);
       return;
     }
 
