@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todo-broadcaster-dep
+  namespace: project
+spec:
+  replicas: 6
+  selector:
+    matchLabels:
+      app: todo-broadcaster
+  template:
+    metadata:
+      labels:
+        app: todo-broadcaster
+    spec:
+      containers:
+        - name: broadcaster
+          image: PROJECT/TODO_BROADCASTER
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: "20m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+          env:
+            - name: NATS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: NATS_URL
+            - name: NATS_SUBJECT
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: NATS_SUBJECT
+            - name: NATS_QUEUE
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: NATS_QUEUE
+            - name: BROADCAST_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: BROADCAST_URL
+            - name: BROADCAST_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: BROADCAST_USER
