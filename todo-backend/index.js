@@ -1,6 +1,20 @@
 const http = require('http');
 
-const port = Number(process.env.PORT || 3000);
+function required(name) {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing required environment variable ${name}`);
+  return value;
+}
+
+function requiredNumber(name) {
+  const value = Number(required(name));
+  if (!Number.isFinite(value)) throw new Error(`Environment variable ${name} must be numeric`);
+  return value;
+}
+
+const port = requiredNumber('PORT');
+const maxTodoLength = requiredNumber('MAX_TODO_LENGTH');
+const requestBodyLimit = requiredNumber('REQUEST_BODY_LIMIT_BYTES');
 let nextId = 4;
 const todos = [
   { id: 1, content: 'Learn Kubernetes' },
@@ -18,7 +32,7 @@ function readBody(req) {
     let body = '';
     req.on('data', (chunk) => {
       body += chunk;
-      if (body.length > 10_000) {
+      if (body.length > requestBodyLimit) {
         reject(new Error('Request body too large'));
         req.destroy();
       }
@@ -39,8 +53,8 @@ const server = http.createServer(async (req, res) => {
       const raw = await readBody(req);
       const data = JSON.parse(raw || '{}');
       const content = typeof data.content === 'string' ? data.content.trim() : '';
-      if (!content || content.length > 140) {
-        sendJson(res, 400, { error: 'Todo must contain 1-140 characters' });
+      if (!content || content.length > maxTodoLength) {
+        sendJson(res, 400, { error: `Todo must contain 1-${maxTodoLength} characters` });
         return;
       }
 
