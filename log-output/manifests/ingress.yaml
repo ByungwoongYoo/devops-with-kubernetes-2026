@@ -3,6 +3,7 @@ kind: Ingress
 metadata:
   name: log-output-ping-pong-ingress
 spec:
+  ingressClassName: traefik
   rules:
     - http:
         paths:
