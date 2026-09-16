@@ -68,6 +68,14 @@ async function createTodo(content) {
   }
 }
 
+async function breakBackend() {
+  const response = await fetch(`${todoBackendUrl}/break`, { method: 'POST' });
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message.trim() || `Todo backend returned ${response.status}`);
+  }
+}
+
 function page(todos) {
   const items = todos.map((todo) => `<li>${escapeHtml(todo.content)}</li>`).join('\n      ');
   return `<!doctype html>
@@ -84,6 +92,9 @@ function page(todos) {
     <form action="/todos" method="post" style="display:flex;gap:8px;margin-bottom:20px">
       <input id="todo" name="content" type="text" maxlength="${maxTodoLength}" required placeholder="Write a todo (max ${maxTodoLength} characters)" style="flex:1;padding:10px" />
       <button type="submit">Send</button>
+    </form>
+    <form action="/break" method="post" style="margin-bottom:20px">
+      <button type="submit" style="background:#b42318;color:white;padding:8px 12px;border:0;border-radius:4px">Break the app</button>
     </form>
     <h2>Todos</h2>
     <ul>
@@ -137,6 +148,24 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end(`Could not create todo: ${err.message}\n`);
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/break') {
+    try {
+      await breakBackend();
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta http-equiv="refresh" content="8;url=/"><title>Restarting</title></head>
+<body style="font-family:system-ui,sans-serif;max-width:720px;margin:40px auto">
+<h1>Application marked unhealthy</h1>
+<p>The liveness probe should restart the backend container. This page will retry shortly.</p>
+<p><a href="/">Retry now</a></p>
+</body></html>`);
+    } catch (err) {
+      res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(`Could not break backend: ${err.message}\n`);
     }
     return;
   }
