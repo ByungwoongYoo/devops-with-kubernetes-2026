@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: todo-backend
-          image: dwk-todo-backend:2.6
+          image: dwk-todo-backend:2.8
           imagePullPolicy: IfNotPresent
           env:
             - name: PORT
@@ -33,5 +33,30 @@ spec:
                 configMapKeyRef:
                   name: project-config
                   key: REQUEST_BODY_LIMIT_BYTES
+            - name: DATABASE_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: DATABASE_HOST
+            - name: DATABASE_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: DATABASE_PORT
+            - name: DATABASE_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: DATABASE_NAME
+            - name: DATABASE_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: project-config
+                  key: DATABASE_USER
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: project-postgres-secret
+                  key: POSTGRES_PASSWORD
           ports:
             - containerPort: 3000
