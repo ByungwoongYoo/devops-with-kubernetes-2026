@@ -13,28 +13,31 @@ spec:
         app: log-output
     spec:
       volumes:
-        - name: shared-log
-          emptyDir: {}
+        - name: shared-data
+          persistentVolumeClaim:
+            claimName: shared-log-ping-pong-claim
       containers:
         - name: log-writer
-          image: dwk-log-output-writer:1.10
+          image: dwk-log-output-writer:1.11
           imagePullPolicy: IfNotPresent
           env:
             - name: LOG_FILE
               value: /usr/src/app/files/log.txt
           volumeMounts:
-            - name: shared-log
+            - name: shared-data
               mountPath: /usr/src/app/files
         - name: log-reader
-          image: dwk-log-output-reader:1.10
+          image: dwk-log-output-reader:1.11
           imagePullPolicy: IfNotPresent
           env:
             - name: PORT
               value: "3000"
             - name: LOG_FILE
               value: /usr/src/app/files/log.txt
+            - name: COUNTER_FILE
+              value: /usr/src/app/files/ping-pong.txt
           ports:
             - containerPort: 3000
           volumeMounts:
-            - name: shared-log
+            - name: shared-data
               mountPath: /usr/src/app/files
