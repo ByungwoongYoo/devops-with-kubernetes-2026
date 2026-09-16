@@ -22,17 +22,64 @@ spec:
         spec:
           serviceAccountName: todo-backup-ksa
           restartPolicy: OnFailure
-          containers:
-            - name: backup
-              image: PROJECT/TODO_BACKUP
+          volumes:
+            - name: backup-data
+              emptyDir: {}
+          initContainers:
+            - name: pg-dump
+              image: postgres:18.0
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  stamp=$(date -u +%Y%m%dT%H%M%SZ)
+                  export PGPASSWORD="$DATABASE_PASSWORD"
+                  pg_dump -h "$DATABASE_HOST" -p "$DATABASE_PORT" -U "$DATABASE_USER" "$DATABASE_NAME" | gzip > "/backup/todos-${stamp}.sql.gz"
               env:
-                - name: DATABASE_URL
+                - name: DATABASE_HOST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: project-config
+                      key: DATABASE_HOST
+                - name: DATABASE_PORT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: project-config
+                      key: DATABASE_PORT
+                - name: DATABASE_NAME
+                  valueFrom:
+                    configMapKeyRef:
+                      name: project-config
+                      key: DATABASE_NAME
+                - name: DATABASE_USER
+                  valueFrom:
+                    configMapKeyRef:
+                      name: project-config
+                      key: DATABASE_USER
+                - name: DATABASE_PASSWORD
                   valueFrom:
                     secretKeyRef:
-                      name: todo-backup-db
-                      key: DATABASE_URL
+                      name: project-postgres-secret
+                      key: POSTGRES_PASSWORD
+              volumeMounts:
+                - name: backup-data
+                  mountPath: /backup
+          containers:
+            - name: upload
+              image: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  file=$(ls /backup/*.sql.gz | head -n 1)
+                  gcloud storage cp "$file" "gs://${BACKUP_BUCKET}/$(basename "$file")"
+                  echo "backup_uploaded $(basename "$file")"
+              env:
                 - name: BACKUP_BUCKET
                   valueFrom:
                     configMapKeyRef:
                       name: project-config
                       key: BACKUP_BUCKET
+              volumeMounts:
+                - name: backup-data
+                  mountPath: /backup
