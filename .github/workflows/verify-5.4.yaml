@@ -1,0 +1,47 @@
+name: verify-5.4
+
+on:
+  push:
+    branches: ["5.4"]
+  workflow_dispatch:
+
+jobs:
+  verify-wikipedia-init-sidecar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k3d and create cluster
+        run: |
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          k3d cluster create verify54 --wait
+
+      - name: Deploy Wikipedia app
+        run: |
+          kubectl apply -f wikipedia/manifests.yaml
+          kubectl rollout status deployment/wikipedia-app -n exercises --timeout=180s
+          kubectl get pod -n exercises -l app=wikipedia-app -o wide
+
+      - name: Verify init container fetched Kubernetes page
+        run: |
+          POD=$(kubectl get pod -n exercises -l app=wikipedia-app -o jsonpath='{.items[0].metadata.name}')
+          test "$(kubectl get pod -n exercises "$POD" -o jsonpath='{.status.initContainerStatuses[0].state.terminated.exitCode}')" = "0"
+          kubectl exec -n exercises "$POD" -c nginx -- sh -c 'test -s /usr/share/nginx/html/index.html'
+          kubectl exec -n exercises "$POD" -c nginx -- grep -qi Kubernetes /usr/share/nginx/html/index.html
+
+      - name: Verify nginx serves the fetched page
+        run: |
+          kubectl port-forward -n exercises svc/wikipedia-svc 18080:80 >/tmp/wiki-pf.log 2>&1 &
+          PF_PID=$!
+          trap 'kill $PF_PID || true' EXIT
+          sleep 3
+          curl -fsS --retry 10 --retry-delay 2 http://127.0.0.1:18080/ | tee /tmp/wiki.html
+          grep -qi Kubernetes /tmp/wiki.html
+
+      - name: Verify sidecar is running its 5-15 minute refresh loop
+        run: |
+          POD=$(kubectl get pod -n exercises -l app=wikipedia-app -o jsonpath='{.items[0].metadata.name}')
+          test "$(kubectl get pod -n exercises "$POD" -o jsonpath='{.status.containerStatuses[?(@.name=="wikipedia-random-sidecar")].ready}')" = "true"
+          kubectl logs -n exercises "$POD" -c wikipedia-random-sidecar | tee /tmp/sidecar.log
+          grep -Eq 'Waiting ([3-8][0-9][0-9]|9[0-9][0-9]) seconds' /tmp/sidecar.log
