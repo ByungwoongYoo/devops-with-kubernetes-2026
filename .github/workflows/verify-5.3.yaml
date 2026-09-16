@@ -1,0 +1,95 @@
+name: verify-5.3
+
+on:
+  push:
+    branches: ["5.3"]
+  workflow_dispatch:
+
+jobs:
+  verify-log-service-mesh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k3d and create cluster
+        run: |
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          k3d cluster create verify53 \
+            --api-port 6550 \
+            --agents 2 \
+            --k3s-arg '--disable=traefik@server:*' \
+            --image rancher/k3s:v1.34.1-k3s1 \
+            --wait
+
+      - name: Build and import Log Output images
+        run: |
+          docker build -t dwk-log-output-writer:5.3 -f log-output/Dockerfile.writer log-output
+          docker build -t dwk-log-output-reader:5.3 -f log-output/Dockerfile.reader log-output
+          k3d image import -c verify53 dwk-log-output-writer:5.3 dwk-log-output-reader:5.3
+
+      - name: Install Istio ambient and Gateway API
+        run: |
+          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.31.0 sh -
+          kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.0/experimental-install.yaml
+          ./istio-1.31.0/bin/istioctl install \
+            --set profile=ambient \
+            --set values.global.platform=k3d \
+            --skip-confirmation
+          kubectl rollout status deployment/istiod -n istio-system --timeout=180s
+          kubectl rollout status daemonset/ztunnel -n istio-system --timeout=180s
+
+      - name: Deploy log output and weighted greeters
+        run: |
+          kubectl apply -f service-mesh/log-greeter.yaml
+          kubectl rollout status deployment/log-output-dep -n exercises --timeout=180s
+          kubectl rollout status deployment/greeter-v1 -n exercises --timeout=180s
+          kubectl rollout status deployment/greeter-v2 -n exercises --timeout=180s
+          kubectl wait --for=condition=Programmed gateway/waypoint -n exercises --timeout=180s
+          kubectl get gateway,httproute,svc,pods -n exercises
+
+      - name: Install Prometheus and Kiali
+        run: |
+          kubectl apply -f istio-1.31.0/samples/addons/prometheus.yaml
+          kubectl apply -f istio-1.31.0/samples/addons/kiali.yaml
+          kubectl rollout status deployment/prometheus -n istio-system --timeout=240s
+          kubectl rollout status deployment/kiali -n istio-system --timeout=240s
+
+      - name: Generate traffic through greeter service
+        run: |
+          kubectl run traffic -n exercises \
+            --image=curlimages/curl:8.10.1 \
+            --restart=Never --command -- sleep 3600
+          kubectl wait --for=condition=Ready pod/traffic -n exercises --timeout=120s
+          kubectl exec -n exercises traffic -- sh -c \
+            'i=0; while [ $i -lt 200 ]; do curl -fsS http://greeter-svc; i=$((i+1)); done' \
+            | tee /tmp/greeter-results.txt
+          V1=$(grep -c 'greeter v1' /tmp/greeter-results.txt || true)
+          V2=$(grep -c 'greeter v2' /tmp/greeter-results.txt || true)
+          TOTAL=$((V1 + V2))
+          echo "v1=$V1 v2=$V2 total=$TOTAL"
+          test "$TOTAL" -eq 200
+          # Broad bounds make the test robust while still proving both weighted backends are used.
+          test "$V1" -ge 120
+          test "$V1" -le 180
+          test "$V2" -ge 20
+          test "$V2" -le 80
+
+      - name: Verify Log Output consumes the greeter service
+        run: |
+          kubectl exec -n exercises traffic -- curl -fsS http://log-output-svc/ | tee /tmp/log-output.txt
+          grep -q 'Greeter: hello from greeter v' /tmp/log-output.txt
+
+      - name: Confirm mesh telemetry source for Kiali
+        run: |
+          sleep 20
+          kubectl port-forward -n istio-system svc/prometheus 19090:9090 >/tmp/prom-pf.log 2>&1 &
+          PF_PID=$!
+          trap 'kill $PF_PID || true' EXIT
+          sleep 3
+          curl -fsS --get 'http://127.0.0.1:19090/api/v1/query' \
+            --data-urlencode 'query=sum by (destination_workload) (istio_requests_total{destination_workload=~"greeter-v.*"})' \
+            | tee /tmp/metrics.json
+          grep -q 'greeter-v1' /tmp/metrics.json
+          grep -q 'greeter-v2' /tmp/metrics.json
+          kubectl get deployment/kiali -n istio-system
