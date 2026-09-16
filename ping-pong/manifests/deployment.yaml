@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: ping-pong
-          image: dwk-ping-pong:2.7
+          image: dwk-ping-pong:4.1
           imagePullPolicy: IfNotPresent
           env:
             - name: PORT
@@ -35,3 +35,11 @@ spec:
                   key: POSTGRES_PASSWORD
           ports:
             - containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 1
