@@ -1,11 +1,17 @@
-name: GitOps release log output
+name: GitOps release project
 
 on:
   push:
     branches:
-      - "4.7"
+      - main
+      - "4.8"
     paths:
-      - "log-output/**"
+      - "todo-app/**"
+      - "todo-backend/**"
+      - "todo-generator/**"
+      - "broadcaster/**"
+      - "nats/**"
+      - "kustomization.yaml"
       - ".github/workflows/main.yaml"
 
 permissions:
@@ -24,8 +30,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          ref: "4.7"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
@@ -39,37 +43,45 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud --quiet auth configure-docker "$REGISTRY"
 
-      - name: Build and publish log-output images
+      - name: Build and publish project images
         run: |
-          WRITER_IMAGE="$REGISTRY/$PROJECT_ID/$REPOSITORY/log-output-writer:$GITHUB_SHA"
-          READER_IMAGE="$REGISTRY/$PROJECT_ID/$REPOSITORY/log-output-reader:$GITHUB_SHA"
-          docker build -f log-output/Dockerfile.writer -t "$WRITER_IMAGE" ./log-output
-          docker build -f log-output/Dockerfile.reader -t "$READER_IMAGE" ./log-output
-          docker push "$WRITER_IMAGE"
-          docker push "$READER_IMAGE"
-          echo "WRITER_IMAGE=$WRITER_IMAGE" >> "$GITHUB_ENV"
-          echo "READER_IMAGE=$READER_IMAGE" >> "$GITHUB_ENV"
+          TODO_APP_IMAGE="$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-app:$GITHUB_SHA"
+          TODO_BACKEND_IMAGE="$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-backend:$GITHUB_SHA"
+          TODO_GENERATOR_IMAGE="$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-generator:$GITHUB_SHA"
+          TODO_BROADCASTER_IMAGE="$REGISTRY/$PROJECT_ID/$REPOSITORY/todo-broadcaster:$GITHUB_SHA"
+          docker build -t "$TODO_APP_IMAGE" ./todo-app
+          docker build -t "$TODO_BACKEND_IMAGE" ./todo-backend
+          docker build -t "$TODO_GENERATOR_IMAGE" ./todo-generator
+          docker build -t "$TODO_BROADCASTER_IMAGE" ./broadcaster
+          docker push "$TODO_APP_IMAGE"
+          docker push "$TODO_BACKEND_IMAGE"
+          docker push "$TODO_GENERATOR_IMAGE"
+          docker push "$TODO_BROADCASTER_IMAGE"
+          echo "TODO_APP_IMAGE=$TODO_APP_IMAGE" >> "$GITHUB_ENV"
+          echo "TODO_BACKEND_IMAGE=$TODO_BACKEND_IMAGE" >> "$GITHUB_ENV"
+          echo "TODO_GENERATOR_IMAGE=$TODO_GENERATOR_IMAGE" >> "$GITHUB_ENV"
+          echo "TODO_BROADCASTER_IMAGE=$TODO_BROADCASTER_IMAGE" >> "$GITHUB_ENV"
 
       - name: Set up Kustomize
         uses: imranismail/setup-kustomize@v3
 
-      - name: Update desired image state in Git
+      - name: Commit desired state for ArgoCD
         run: |
-          cd log-output
-          kustomize edit set image PROJECT/LOG_WRITER="$WRITER_IMAGE"
-          kustomize edit set image PROJECT/LOG_READER="$READER_IMAGE"
-          cd ..
+          kustomize edit set image PROJECT/TODO_APP="$TODO_APP_IMAGE"
+          kustomize edit set image PROJECT/TODO_BACKEND="$TODO_BACKEND_IMAGE"
+          kustomize edit set image PROJECT/TODO_GENERATOR="$TODO_GENERATOR_IMAGE"
+          kustomize edit set image PROJECT/TODO_BROADCASTER="$TODO_BROADCASTER_IMAGE"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add log-output/kustomization.yaml
+          git add kustomization.yaml
           if git diff --cached --quiet; then
-            echo "No GitOps state change"
+            echo "No desired-state change"
           else
-            git commit -m "Release log-output $GITHUB_SHA [skip ci]"
-            git push origin HEAD:4.7
+            git commit -m "Release project $GITHUB_SHA [skip ci]"
+            git push origin HEAD:${GITHUB_REF_NAME}
           fi
 
       - name: GitOps boundary
         run: |
-          echo "No kubectl deployment is performed here."
-          echo "ArgoCD pulls the desired state from branch 4.7."
+          echo "CI builds and publishes images and changes Git only."
+          echo "ArgoCD performs the Kubernetes deployment by pulling desired state."
