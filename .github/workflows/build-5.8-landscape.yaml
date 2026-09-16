@@ -23,28 +23,107 @@ jobs:
       - name: Install image dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y poppler-utils
+          sudo apt-get install -y poppler-utils fonts-dejavu-core
           python -m pip install --quiet pillow
 
       - name: Download and render the CNCF landscape
         run: |
-          mkdir -p docs /tmp/landscape-artifact
+          mkdir -p docs
           curl --fail --insecure --location --retry 5 --retry-delay 2 \
             https://landscapeapp.cncf.io/cncf/images/landscape.pdf \
             -o /tmp/landscape.pdf
+          file /tmp/landscape.pdf
           head -c 5 /tmp/landscape.pdf | grep -q '%PDF-'
           pdftoppm -f 1 -singlefile -png -r 170 /tmp/landscape.pdf /tmp/landscape
-          cp /tmp/landscape.png /tmp/landscape-artifact/landscape.png
           file /tmp/landscape.png
 
-      - name: Upload official landscape source
-        uses: actions/upload-artifact@v4
-        with:
-          name: cncflandscape-source
-          path: /tmp/landscape-artifact/landscape.png
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Placeholder until audited coordinates are committed
+      - name: Circle directly and indirectly used technologies
         run: |
-          echo 'Official source image rendered and uploaded for coordinate audit.'
+          cat > /tmp/annotate.py <<'PY'
+          from PIL import Image, ImageDraw, ImageFont
+          import os
+
+          source = '/tmp/landscape.png'
+          out = 'docs/cncf-landscape-used.png'
+          report_path = 'docs/cncf-landscape-detection.txt'
+
+          img = Image.open(source).convert('RGB')
+          W, H = img.size
+          if not (3800 <= W <= 3900 and 2700 <= H <= 2800):
+              raise SystemExit(f'Unexpected CNCF landscape render size: {W}x{H}')
+
+          # Coordinates were visually audited against the rendered CNCF static
+          # landscape used by this exercise.  The ellipse encloses the project tile,
+          # not merely its label.
+          direct = {
+              'Kubernetes': (90, 680, 250, 840),
+              'Helm': (1010, 135, 1150, 280),
+              'Argo CD': (1815, 130, 1945, 285),
+              'GitHub Actions': (2135, 310, 2225, 405),
+              'Istio': (1995, 680, 2150, 840),
+              'NGINX': (1145, 860, 1245, 960),
+              'Traefik': (1275, 915, 1380, 1020),
+              'Prometheus': (2310, 1295, 2470, 1470),
+              'Grafana': (2770, 1480, 2865, 1580),
+              'Google Kubernetes Engine': (2638, 615, 2730, 710),
+              'Knative': (3600, 345, 3715, 475),
+          }
+          indirect = {
+              'K3s': (2305, 350, 2405, 455),
+              'Flannel': (2040, 1160, 2145, 1270),
+              'CoreDNS': (580, 675, 725, 840),
+              'containerd': (1165, 1030, 1330, 1225),
+          }
+
+          green = (0, 170, 70)
+          orange = (245, 130, 0)
+          line_width = 14
+          draw = ImageDraw.Draw(img)
+
+          for box in direct.values():
+              draw.ellipse(box, outline=green, width=line_width)
+          for box in indirect.values():
+              draw.ellipse(box, outline=orange, width=line_width)
+
+          legend_h = 120
+          canvas = Image.new('RGB', (W, H + legend_h), 'white')
+          canvas.paste(img, (0, 0))
+          d = ImageDraw.Draw(canvas)
+          font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+          font = ImageFont.truetype(font_path, 34) if os.path.exists(font_path) else ImageFont.load_default()
+          y = H + 60
+          d.ellipse((80, y - 25, 130, y + 25), outline=green, width=10)
+          d.text((150, y - 28), 'GREEN = directly used', fill='black', font=font)
+          d.ellipse((1050, y - 25, 1100, y + 25), outline=orange, width=10)
+          d.text((1120, y - 28), 'ORANGE = indirectly used dependency', fill='black', font=font)
+          d.text((2200, y - 28), 'Exercise 5.8 — CNCF Cloud Native Landscape', fill='black', font=font)
+          canvas.save(out, optimize=True)
+
+          with open(report_path, 'w', encoding='utf-8') as f:
+              f.write('Source: https://landscapeapp.cncf.io/cncf/images/landscape.pdf\n')
+              f.write(f'Rendered size: {W}x{H}\n')
+              f.write('GREEN / DIRECT\n')
+              for name, box in direct.items():
+                  f.write(f'- {name}: {box}\n')
+              f.write('ORANGE / INDIRECT\n')
+              for name, box in indirect.items():
+                  f.write(f'- {name}: {box}\n')
+              f.write('Docker was used in the course, but this static landscape edition does not show Docker as a standalone product tile; it is therefore documented in the written list instead of being falsely circled.\n')
+
+          print(f'Wrote {out} ({canvas.size[0]}x{canvas.size[1]})')
+          print(f'Direct circles: {len(direct)}; indirect circles: {len(indirect)}')
+          PY
+          python /tmp/annotate.py
+          ls -lh docs/cncf-landscape-used.png docs/cncf-landscape-detection.txt
+
+      - name: Commit final submission image to branch 5.8
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/cncf-landscape-used.png docs/cncf-landscape-detection.txt
+          if git diff --cached --quiet; then
+            echo 'No image changes to commit'
+          else
+            git commit -m 'Exercise 5.8: add annotated CNCF landscape image [skip ci]'
+            git push origin HEAD:5.8
+          fi
