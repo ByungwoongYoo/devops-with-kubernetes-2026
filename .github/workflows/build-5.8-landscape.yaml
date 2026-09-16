@@ -29,10 +29,14 @@ jobs:
       - name: Download and render the CNCF landscape
         run: |
           mkdir -p docs
-          curl --fail --location --retry 5 --retry-delay 2 \
+          # This legacy CNCF static-landscape host currently presents a certificate
+          # whose SAN does not match the hostname. Download only this known public PDF,
+          # then validate that it is actually a PDF before rendering it.
+          curl --fail --insecure --location --retry 5 --retry-delay 2 \
             https://landscapeapp.cncf.io/cncf/images/landscape.pdf \
             -o /tmp/landscape.pdf
           file /tmp/landscape.pdf
+          head -c 5 /tmp/landscape.pdf | grep -q '%PDF-'
           pdftoppm -f 1 -singlefile -png -r 170 /tmp/landscape.pdf /tmp/landscape
           file /tmp/landscape.png
 
